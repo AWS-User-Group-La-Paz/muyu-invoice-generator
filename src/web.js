@@ -32,6 +32,7 @@ app.use(httpLogger);
 app.use(cookieParser());
 app.use(
 	helmet({
+		crossOriginOpenerPolicy: false,
 		contentSecurityPolicy: {
 			directives: {
 				...helmet.contentSecurityPolicy.getDefaultDirectives(),
