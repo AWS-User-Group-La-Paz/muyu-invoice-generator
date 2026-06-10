@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 // Environment Validation
-if (!process.env.DATABASE_URL) {
+if (!process.env.DATABASE_URL && process.env.NODE_ENV !== 'test') {
   console.error('FATAL: DATABASE_URL environment variable is not set.');
   process.exit(1);
 }
