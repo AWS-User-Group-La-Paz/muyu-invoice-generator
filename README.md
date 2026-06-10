@@ -73,6 +73,27 @@ Verify the security of project dependencies using the integrated Trivy task:
 mise run scan-dependencies
 ```
 
+## Production Deployment
+
+This application is designed to be deployed natively on an AWS EC2 instance without container orchestration. We use HashiCorp Packer to build a fully configured Amazon Machine Image (AMI).
+
+### 1. Building the EC2 Image (AMI)
+To bake a fresh AMI containing Node.js, Nginx, PostgreSQL, and the application code, ensure you have AWS credentials exported in your terminal, then run:
+```bash
+mise exec -- packer build provisioning/ami.pkr.hcl
+```
+This will output an AMI ID (e.g., `ami-0abcdef1234567890`) which you can use to launch an EC2 instance.
+
+### 2. Deploying New Versions
+Once your EC2 instance is running, you can pull new code and restart the service without having to rebuild the AMI from scratch.
+
+SSH into your EC2 instance, navigate to the application directory, and run the deployment script:
+```bash
+cd /opt/muyu-invoice-generator
+sudo ./scripts/deploy.sh
+```
+This script pulls the latest code from the `master` branch, cleanly installs dependencies, and restarts the `muyu-invoice` systemd service with zero downtime managed natively by Linux.
+
 ## Project Structure
 
 ```text
