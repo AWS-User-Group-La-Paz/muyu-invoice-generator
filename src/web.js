@@ -1,6 +1,5 @@
 const express = require("express");
 const path = require("node:path");
-const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
 const { httpLogger, logger } = require("./services/logger");
 const { calculateInvoice } = require("./services/calculations");
@@ -30,37 +29,6 @@ if (!process.env.DATABASE_URL && process.env.NODE_ENV !== "test") {
 // Middleware
 app.use(httpLogger);
 app.use(cookieParser());
-app.use(
-	helmet({
-		crossOriginOpenerPolicy: false,
-		contentSecurityPolicy: {
-			directives: {
-				...helmet.contentSecurityPolicy.getDefaultDirectives(),
-				"script-src": [
-					"'self'",
-					"https://unpkg.com",
-					"https://cdn.jsdelivr.net",
-					"'unsafe-inline'",
-					"'unsafe-eval'",
-				],
-				"img-src": [
-					"'self'",
-					"data:",
-					"https://unpkg.com",
-					"https://cdn.jsdelivr.net",
-				],
-				"style-src": [
-					"'self'",
-					"'unsafe-inline'",
-					"https://fonts.googleapis.com",
-				],
-				"font-src": ["'self'", "https://fonts.gstatic.com"],
-				"connect-src": ["'self'", "https://cdn.jsdelivr.net"],
-			},
-		},
-	}),
-);
-
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "../views"));
 app.use(express.static(path.join(__dirname, "../public")));
