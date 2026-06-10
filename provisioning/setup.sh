@@ -19,7 +19,7 @@ sudo -u postgres psql -c "CREATE DATABASE invoice_db OWNER invoice_user;"
 sudo useradd -m -s /bin/bash muyu
 
 # Clone application
-sudo git clone https://github.com/yamilurbina/muyu-invoice-generator.git /opt/muyu-invoice-generator
+sudo git clone https://github.com/AWS-User-Group-La-Paz/muyu-invoice-generator.git /opt/muyu-invoice-generator
 sudo chown -R muyu:muyu /opt/muyu-invoice-generator
 
 # Install npm dependencies
