@@ -8,6 +8,8 @@ awscli = "2.35.1"
 [env]
 DATABASE_URL = "postgres://invoice_user:invoice_pass@localhost:5432/invoice_db"
 PORT = "3000"
+AWS_REGION = "us-east-1"
+AWS_PAGER = ""
 
 [tasks.start]
 description = "Install dependencies and start the application"
