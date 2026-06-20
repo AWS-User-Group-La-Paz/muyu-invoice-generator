@@ -26,7 +26,7 @@
 				taxRate: profile.taxRate || "",
 				expenses: [{ id: 1, description: "", cost: "" }],
 				nextId: 2,
-				submitting: false,
+				generated: false,
 				addExpense() {
 					this.expenses.push({ id: this.nextId++, description: "", cost: "" });
 				},
@@ -43,6 +43,14 @@
 				},
 				get total() {
 					return this.subtotal + this.taxAmount;
+				},
+				resetExpenses() {
+					this.expenses = [{ id: this.nextId++, description: "", cost: "" }];
+				},
+				showGenerated() {
+					this.generated = true;
+					window.scrollTo(0, 0);
+					setTimeout(() => this.resetExpenses(), 0);
 				},
 			};
 		}
@@ -100,7 +108,11 @@
 				<p>Fill in the details below to generate your invoice</p>
 			</section>
 
-			<form class="panel" action="/generate" method="POST" @submit="submitting = true">
+			<div class="notice" x-show="generated" x-cloak>
+				<span>Invoice generated. Your download should start shortly.</span>
+			</div>
+
+			<form class="panel" action="/generate" method="POST" @submit="showGenerated($el)">
 				<fieldset>
 					<legend>Company Information</legend>
 					<label for="companyName">Company Name</label>
@@ -113,7 +125,7 @@
 				<fieldset>
 					<div class="split">
 						<legend>Expenses</legend>
-						<button type="button" class="secondary" @click="addExpense">Add Expense</button>
+						<button type="button" @click="addExpense">Add Expense</button>
 					</div>
 
 					<template x-for="(expense, index) in expenses" :key="expense.id">
@@ -144,7 +156,7 @@
 				</section>
 
 				<div class="actions">
-					<button type="submit" :disabled="submitting" x-text="submitting ? 'Generating...' : 'Generate Invoice'"></button>
+					<button type="submit">Generate Invoice</button>
 				</div>
 			</form>
 		</main>

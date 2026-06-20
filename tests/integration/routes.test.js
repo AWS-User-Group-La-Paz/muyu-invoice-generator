@@ -41,6 +41,17 @@ describe("API Routes", () => {
 			expect(response.type).toBe("text/html");
 		});
 
+		test("should render invoice form controls", async () => {
+			const response = await request(app).get("/");
+			expect(response.text).toContain(
+				'<button type="button" @click="addExpense">Add Expense</button>',
+			);
+			expect(response.text).toContain('x-show="generated"');
+			expect(response.text).toContain('@submit="showGenerated($el)"');
+			expect(response.text).toContain("window.scrollTo(0, 0)");
+			expect(response.text).not.toContain('this.companyName = ""');
+		});
+
 		test("should include profile defaults if they exist", async () => {
 			const email = "prefill@test.com";
 			const mockProfile = {
