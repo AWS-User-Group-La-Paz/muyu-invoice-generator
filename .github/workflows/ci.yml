@@ -9,10 +9,26 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: invoice_user
+          POSTGRES_PASSWORD: invoice_pass
+          POSTGRES_DB: invoice_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U invoice_user -d invoice_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://invoice_user:invoice_pass@localhost:5432/invoice_db
     
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

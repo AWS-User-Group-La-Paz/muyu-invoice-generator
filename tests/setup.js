@@ -1,4 +1,2 @@
-if (process.env.NODE_ENV !== "test") {
-	process.env.DATABASE_URL =
-		"postgres://invoice_user:invoice_pass@localhost:5432/invoice_db";
-}
+process.env.DATABASE_URL ||=
+	"postgres://invoice_user:invoice_pass@localhost:5432/invoice_db";

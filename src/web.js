@@ -1,7 +1,7 @@
 const express = require("express");
 const path = require("node:path");
 const cookieParser = require("cookie-parser");
-const { httpLogger, logger } = require("./services/logger");
+const { httpLogger } = require("./services/logger");
 const { calculateInvoice } = require("./services/calculations");
 const {
 	initDB,
@@ -17,16 +17,11 @@ const { generatePDF } = require("./services/pdf");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Helpers
-const delay = (ms) => new Promise((res) => setTimeout(res, ms));
-
-// Environment Validation
 if (!process.env.DATABASE_URL && process.env.NODE_ENV !== "test") {
 	console.error("FATAL: DATABASE_URL environment variable is not set.");
 	process.exit(1);
 }
 
-// Middleware
 app.use(httpLogger);
 app.use(cookieParser());
 app.set("view engine", "ejs");
@@ -42,13 +37,10 @@ app.get("/health", (_req, res) => {
 app.get("/", async (req, res) => {
 	try {
 		const email = req.cookies.user_email;
-		let profile = null;
-		if (email) {
-			profile = await getProfileByEmail(email);
-		}
+		const profile = email ? await getProfileByEmail(email) : null;
 		res.render("index", { profile });
 	} catch (error) {
-		logger.error("Error loading dashboard:", error);
+		console.error("Error loading dashboard:", error);
 		res.render("index", { profile: null });
 	}
 });
@@ -62,7 +54,7 @@ app.get("/past-invoices", async (req, res) => {
 		const invoices = await getInvoicesByOwner(email);
 		res.render("past-invoices", { invoices, email });
 	} catch (error) {
-		logger.error("Error fetching past invoices:", error);
+		console.error("Error fetching past invoices:", error);
 		res.status(500).send("An error occurred while fetching your history.");
 	}
 });
@@ -76,7 +68,7 @@ app.get("/settings", async (req, res) => {
 		const profile = await getProfileByEmail(email);
 		res.render("settings", { profile, email });
 	} catch (error) {
-		logger.error("Error fetching settings:", error);
+		console.error("Error fetching settings:", error);
 		res.status(500).send("An error occurred while fetching settings.");
 	}
 });
@@ -96,7 +88,7 @@ app.post("/settings", async (req, res) => {
 		});
 		res.redirect("/settings?success=1");
 	} catch (error) {
-		logger.error("Error saving settings:", error);
+		console.error("Error saving settings:", error);
 		res.status(500).send("An error occurred while saving settings.");
 	}
 });
@@ -123,7 +115,7 @@ app.get("/download/:id", async (req, res) => {
 		);
 		res.send(pdfBuffer);
 	} catch (error) {
-		logger.error("Error downloading invoice:", error);
+		console.error("Error downloading invoice:", error);
 		res.status(500).send("An error occurred while downloading the invoice.");
 	}
 });
@@ -137,10 +129,8 @@ app.post("/generate", async (req, res) => {
 			return res.status(400).send("At least one expense is required.");
 		}
 
-		// Use the calculation service
 		const invoiceData = calculateInvoice(expenses, taxRate);
 
-		// Save to DB
 		const invoice = await saveInvoice({
 			companyName,
 			companyDetails,
@@ -148,15 +138,8 @@ app.post("/generate", async (req, res) => {
 			...invoiceData,
 		});
 
-		// Generate PDF
 		const pdfBuffer = await generatePDF(invoice);
 
-		// Artificial delay for user feedback (only in non-test environments)
-		if (process.env.NODE_ENV !== "test") {
-			await delay(3000);
-		}
-
-		// Stream PDF response
 		res.setHeader("Content-Type", "application/pdf");
 		res.setHeader(
 			"Content-Disposition",
@@ -164,14 +147,13 @@ app.post("/generate", async (req, res) => {
 		);
 		res.send(pdfBuffer);
 	} catch (error) {
-		logger.error("Error generating invoice:", error);
+		console.error("Error generating invoice:", error);
 		res.status(500).send("An error occurred while generating the invoice.");
 	}
 });
 
-// Lifecycle management
 const shutdown = async () => {
-	logger.info("Shutting down: closing database pool");
+	console.log("Shutting down: closing database pool");
 	await pool.end();
 	process.exit(0);
 };
@@ -179,15 +161,14 @@ const shutdown = async () => {
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
-// Start Server
 async function start() {
 	try {
 		await initDB();
 		app.listen(PORT, () => {
-			logger.info(`Server is running on http://localhost:${PORT}`);
+			console.log(`Server is running on http://localhost:${PORT}`);
 		});
 	} catch (error) {
-		logger.error("Failed to start server:", error);
+		console.error("Failed to start server:", error);
 		process.exit(1);
 	}
 }

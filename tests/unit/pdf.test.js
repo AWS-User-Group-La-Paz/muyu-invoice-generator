@@ -5,6 +5,28 @@ jest.mock("pdfkit");
 
 describe("generatePDF", () => {
 	let mockDoc;
+	const invoice = (overrides = {}) => ({
+		id: 1,
+		created_at: new Date(),
+		company_name: "Test Co",
+		company_details: "Test Address",
+		items: [],
+		subtotal: 0,
+		tax_rate: 0,
+		total: 0,
+		...overrides,
+	});
+	const finishPdf = (content) => {
+		mockDoc.on.mockImplementation((event, callback) => {
+			if (event === "data" && content) {
+				callback(Buffer.from(content));
+			}
+			if (event === "end") {
+				callback();
+			}
+			return mockDoc;
+		});
+	};
 
 	beforeEach(() => {
 		mockDoc = {
@@ -21,29 +43,16 @@ describe("generatePDF", () => {
 	});
 
 	test("should call PDFDocument methods and resolve with buffer", async () => {
-		const invoice = {
-			id: 1,
-			created_at: new Date(),
-			company_name: "Test Co",
-			company_details: "Test Address",
-			items: [{ description: "Item 1", cost: 100 }],
-			subtotal: 100,
-			tax_rate: 10,
-			total: 110,
-		};
+		finishPdf("pdf content");
 
-		// Simulate 'data' and 'end' events
-		mockDoc.on.mockImplementation((event, callback) => {
-			if (event === "data") {
-				callback(Buffer.from("pdf content"));
-			}
-			if (event === "end") {
-				callback();
-			}
-			return mockDoc;
-		});
-
-		const pdfBuffer = await generatePDF(invoice);
+		const pdfBuffer = await generatePDF(
+			invoice({
+				items: [{ description: "Item 1", cost: 100 }],
+				subtotal: 100,
+				tax_rate: 10,
+				total: 110,
+			}),
+		);
 
 		expect(pdfBuffer).toBeInstanceOf(Buffer);
 		expect(mockDoc.fontSize).toHaveBeenCalledWith(25);
@@ -53,45 +62,21 @@ describe("generatePDF", () => {
 	});
 
 	test("should normalize newlines in company_details", async () => {
-		const invoice = {
-			id: 1,
-			created_at: new Date(),
-			company_name: "Test Co",
-			company_details: "Line 1\r\nLine 2",
-			items: [],
-			subtotal: 0,
-			tax_rate: 0,
-			total: 0,
-		};
+		finishPdf();
 
-		mockDoc.on.mockImplementation((event, callback) => {
-			if (event === "end") callback();
-			return mockDoc;
-		});
-
-		await generatePDF(invoice);
+		await generatePDF(
+			invoice({
+				company_details: "Line 1\r\nLine 2",
+			}),
+		);
 
 		expect(mockDoc.text).toHaveBeenCalledWith("Line 1\nLine 2");
 	});
 
 	test("should handle missing company_details", async () => {
-		const invoice = {
-			id: 1,
-			created_at: new Date(),
-			company_name: "Test Co",
-			company_details: null,
-			items: [],
-			subtotal: 0,
-			tax_rate: 0,
-			total: 0,
-		};
+		finishPdf();
 
-		mockDoc.on.mockImplementation((event, callback) => {
-			if (event === "end") callback();
-			return mockDoc;
-		});
-
-		await generatePDF(invoice);
+		await generatePDF(invoice({ company_details: null }));
 
 		expect(mockDoc.text).toHaveBeenCalledWith("");
 	});

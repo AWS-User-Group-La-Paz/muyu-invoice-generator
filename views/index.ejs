@@ -1,294 +1,153 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Muyu: Invoice Generator</title>
-    <link rel="stylesheet" href="/css/main.css">
-    <script src="https://cdn.jsdelivr.net/npm/lucide@0.487.0/dist/umd/lucide.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
-    <style>
-        .h-11 { height: 2.75rem; }
-        .px-8 { padding-left: 2rem; padding-right: 2rem; }
-        .size-6 { width: 1.5rem; height: 1.5rem; }
-        .mr-2 { margin-right: 0.5rem; }
-        .mr-1 { margin-right: 0.25rem; }
-        [x-cloak] { display: none !important; }
-        .modal-open { overflow: hidden !important; }
-        /* Hide modal if cookie exists (handled by blocking script) */
-        .has-cookie #email-modal { display: none !important; }
-    </style>
-    <script>
-        function getCookie(name) {
-            const value = `; ${document.cookie}`;
-            const parts = value.split(`; ${name}=`);
-            if (parts.length === 2) return parts.pop().split(';').shift();
-        }
-        function setCookie(name, value, days = 30) {
-            const date = new Date();
-            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-            document.cookie = `${name}=${value};expires=${date.toUTCString()};path=/`;
-        }
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Muyu: Invoice Generator</title>
+	<link rel="stylesheet" href="/css/main.css">
+	<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+	<script>
+		function getCookie(name) {
+			const row = document.cookie
+				.split("; ")
+				.find((part) => part.startsWith(`${name}=`));
+			return row ? decodeURIComponent(row.slice(name.length + 1)) : "";
+		}
 
-        // Blocking check to prevent modal flash
-        if (getCookie('user_email')) {
-            document.documentElement.classList.add('has-cookie');
-        }
-    </script>
+		function setCookie(name, value, days = 30) {
+			const expires = new Date(Date.now() + days * 864e5).toUTCString();
+			document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`;
+		}
+
+		function invoiceForm(profile) {
+			return {
+				companyName: profile.companyName || "",
+				companyDetails: profile.companyDetails || "",
+				taxRate: profile.taxRate || "",
+				expenses: [{ id: 1, description: "", cost: "" }],
+				nextId: 2,
+				submitting: false,
+				addExpense() {
+					this.expenses.push({ id: this.nextId++, description: "", cost: "" });
+				},
+				removeExpense(id) {
+					if (this.expenses.length > 1) {
+						this.expenses = this.expenses.filter((expense) => expense.id !== id);
+					}
+				},
+				get subtotal() {
+					return this.expenses.reduce((sum, expense) => sum + (parseFloat(expense.cost) || 0), 0);
+				},
+				get taxAmount() {
+					return (this.subtotal * (parseFloat(this.taxRate) || 0)) / 100;
+				},
+				get total() {
+					return this.subtotal + this.taxAmount;
+				},
+			};
+		}
+
+		if (getCookie("user_email")) {
+			document.documentElement.classList.add("has-cookie");
+		}
+	</script>
 </head>
-<body class="dark" 
-      x-data="{ 
-        showModal: !getCookie('user_email'),
-        email: '',
-        submit() {
-            if(this.email) { 
-                setCookie('user_email', this.email); 
-                this.showModal = false; 
-                window.location.reload(); 
-            }
-        }
-      }"
-      :class="{ 'modal-open': showModal }">
-    <!-- Email Prompt Modal -->
-    <div id="email-modal"
-         x-show="showModal" 
-         x-cloak
-         class="fixed inset-0 z-50 flex items-center justify-center p-12"
-         style="background-color: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px);">
-        
-        <div class="bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
-             style="width: 50%; max-width: 800px;"
-             @click.away="return">
-            <div class="p-8">
-                <h2 class="text-xl mb-2 text-foreground font-semibold text-center">Welcome to Muyu</h2>
-                <p class="text-sm text-muted-foreground mb-6 text-center px-2">Please enter your email to start generating and tracking your invoices.</p>
-                <form @submit.prevent="submit">
-                    <div class="space-y-4">
-                        <div class="space-y-2">
-                            <label class="text-sm font-medium text-foreground" for="userEmail">Email Address</label>
-                            <input class="flex h-11 w-full rounded-md border border-input bg-background px-3 py-1 text-base shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border-border text-foreground placeholder:text-muted-foreground" 
-                                   id="userEmail" type="email" x-model="email" placeholder="your@email.com" required />
-                        </div>
-                        <button type="submit" class="w-full inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors bg-primary text-primary-foreground shadow hover:opacity-90 h-11 px-8">
-                            Start Generating
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
+<body
+	x-data="{
+		showModal: !getCookie('user_email'),
+		email: '',
+		submitEmail() {
+			if (this.email) {
+				setCookie('user_email', this.email);
+				this.showModal = false;
+				window.location.reload();
+			}
+		}
+	}"
+	:class="{ locked: showModal }"
+>
+	<div id="email-modal" class="modal" x-show="showModal" x-cloak>
+		<form class="dialog" @submit.prevent="submitEmail">
+			<h1>Welcome to Muyu</h1>
+			<p>Please enter your email to start generating and tracking invoices.</p>
+			<label for="userEmail">Email Address</label>
+			<input id="userEmail" type="email" x-model="email" placeholder="your@email.com" required>
+			<button type="submit">Start Generating</button>
+		</form>
+	</div>
 
-    <div class="flex h-screen bg-background" 
-         x-data="{ 
-            invoiceCompanyName: `<%- profile ? profile.company_name.replace(/`/g, '\\`').replace(/\${/g, '\\${') : '' %>`, 
-            invoiceCompanyDetails: `<%- profile ? profile.company_details.replace(/`/g, '\\`').replace(/\${/g, '\\${') : '' %>`, 
-            invoiceTaxRate: '<%= profile ? profile.default_tax_rate : '' %>', 
-            expenses: [{ id: Date.now(), description: '', cost: '' }],
-            addExpense() {
-                this.expenses.push({ id: Date.now(), description: '', cost: '' });
-                this.$nextTick(() => {
-                    if (window.lucide) {
-                        lucide.createIcons();
-                    }
-                });
-            },
-            removeExpense(id) {
-                if (this.expenses.length > 1) {
-                    this.expenses = this.expenses.filter(e => e.id !== id);
-                }
-            },
-            get subtotal() {
-                return this.expenses.reduce((sum, e) => sum + (parseFloat(e.cost) || 0), 0);
-            },
-            get taxAmount() {
-                return (this.subtotal * (parseFloat(this.invoiceTaxRate) || 0)) / 100;
-            },
-            get total() {
-                return this.subtotal + this.taxAmount;
-            },
-            isGenerating: false,
-            submitForm() {
-                this.isGenerating = true;
-                setTimeout(() => { this.isGenerating = false; }, 5000);
-            }
-         }"
-         x-init="if (window.lucide) { lucide.createIcons(); } else { console.error('Lucide not loaded'); }">
-        
-        <!-- Sidebar -->
-        <aside class="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
-            <div class="p-6 border-b border-sidebar-border">
-                <div class="flex items-center gap-2">
-                    <i data-lucide="receipt" class="size-6 text-sidebar-foreground"></i>
-                    <h1 class="text-lg text-sidebar-foreground">Muyu: Invoice Generator</h1>
-                </div>
-            </div>
+	<div
+		class="shell"
+		x-data='invoiceForm(<%= JSON.stringify({
+			companyName: profile ? profile.company_name : "",
+			companyDetails: profile ? profile.company_details : "",
+			taxRate: profile ? profile.default_tax_rate : ""
+		}) %>)'
+	>
+		<aside class="sidebar">
+			<header>Muyu: Invoice Generator</header>
+			<nav>
+				<a class="active" href="/">Create Invoice</a>
+				<a href="/past-invoices">Past Invoices</a>
+				<a href="/settings">Settings</a>
+			</nav>
+			<footer x-text="getCookie('user_email') ? `Logged in as: ${getCookie('user_email')}` : 'Invoice Gen'"></footer>
+		</aside>
 
-            <nav class="flex-1 p-4">
-                <ul class="space-y-1">
-                    <li>
-                        <a href="/" class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-primary-foreground bg-sidebar-primary hover:opacity-90 transition-opacity">
-                            <i data-lucide="file-text" class="size-4"></i>
-                            <span>Create Invoice</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="/past-invoices" class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
-                            <i data-lucide="file-spreadsheet" class="size-4"></i>
-                            <span>Past Invoices</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="/settings" class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
-                            <i data-lucide="settings" class="size-4"></i>
-                            <span>Settings</span>
-                        </a>
-                    </li>
-                </ul>
-            </nav>
+		<main>
+			<section class="page-header">
+				<h1>Create New Invoice</h1>
+				<p>Fill in the details below to generate your invoice</p>
+			</section>
 
-            <div class="p-4 border-t border-sidebar-border">
-                <p class="text-xs text-muted-foreground" x-text="getCookie('user_email') ? 'Logged in as: ' + getCookie('user_email') : '© 2026 Invoice Gen'"></p>
-            </div>
-        </aside>
+			<form class="panel" action="/generate" method="POST" @submit="submitting = true">
+				<fieldset>
+					<legend>Company Information</legend>
+					<label for="companyName">Company Name</label>
+					<input id="companyName" name="companyName" x-model="companyName" placeholder="Enter company name" required>
 
-        <!-- Main Content -->
-        <main class="flex-1 overflow-auto">
-            <div class="max-w-4xl mx-auto p-8">
-                <div class="mb-8">
-                    <h2 class="text-2xl text-foreground mb-2">Create New Invoice</h2>
-                    <p class="text-sm text-muted-foreground">
-                        Fill in the details below to generate your invoice
-                    </p>
-                </div>
+					<label for="companyDetails">Company Details</label>
+					<textarea id="companyDetails" name="companyDetails" x-model="companyDetails" placeholder="Enter company address, contact info, etc." required></textarea>
+				</fieldset>
 
-                <div class="rounded-xl border bg-card text-card-foreground shadow border-border p-8">
-                    <form action="/generate" method="POST" class="space-y-8" @submit="submitForm">
-                        <!-- Company Information -->
-                        <div class="space-y-6">
-                            <div>
-                                <h3 class="text-sm text-foreground mb-4">Company Information</h3>
-                                <div data-orientation="horizontal" role="none" class="shrink-0 bg-border h-[1px] w-full bg-border"></div>
-                            </div>
+				<fieldset>
+					<div class="split">
+						<legend>Expenses</legend>
+						<button type="button" class="secondary" @click="addExpense">Add Expense</button>
+					</div>
 
-                            <div class="space-y-2">
-                                <label class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground" for="companyName">
-                                    Company Name
-                                </label>
-                                <input class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 bg-input border-border text-foreground placeholder:text-muted-foreground focus:border-ring" 
-                                       id="companyName" name="companyName" x-model="invoiceCompanyName" placeholder="Enter company name" required />
-                            </div>
+					<template x-for="(expense, index) in expenses" :key="expense.id">
+						<div class="expense-row">
+							<label>
+								Description
+								<input type="text" :name="'expenses[' + index + '][description]'" x-model="expense.description" placeholder="Item description" required>
+							</label>
+							<label>
+								Cost
+								<input type="number" step="0.01" min="0" :name="'expenses[' + index + '][cost]'" x-model="expense.cost" placeholder="0.00" required>
+							</label>
+							<button type="button" class="danger" @click="removeExpense(expense.id)" :disabled="expenses.length === 1">Remove</button>
+						</div>
+					</template>
+				</fieldset>
 
-                            <div class="space-y-2">
-                                <label class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground" for="companyDetails">
-                                    Company Details
-                                </label>
-                                <textarea class="flex min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 bg-input border-border text-foreground placeholder:text-muted-foreground focus:border-ring min-h-[100px]" 
-                                          id="companyDetails" name="companyDetails" x-model="invoiceCompanyDetails" placeholder="Enter company address, contact info, etc." required></textarea>
-                            </div>
-                        </div>
+				<fieldset>
+					<legend>Tax Information</legend>
+					<label for="taxRate">Tax Rate (%)</label>
+					<input class="short" id="taxRate" name="taxRate" type="number" step="0.01" min="0" max="100" x-model="taxRate" placeholder="0.00" required>
+				</fieldset>
 
-                        <!-- Expenses -->
-                        <div class="space-y-6">
-                            <div>
-                                <div class="flex items-center justify-between mb-4">
-                                    <h3 class="text-sm text-foreground">Expenses</h3>
-                                    <button type="button" @click="addExpense" class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-3 bg-card border-border text-foreground hover:bg-secondary hover:text-secondary-foreground">
-                                        <i data-lucide="plus" class="size-4 mr-1"></i>
-                                        Add Expense
-                                    </button>
-                                </div>
-                                <div data-orientation="horizontal" role="none" class="shrink-0 bg-border h-[1px] w-full bg-border"></div>
-                            </div>
+				<section class="summary">
+					<p><span>Subtotal</span><strong x-text="'$' + subtotal.toFixed(2)"></strong></p>
+					<p><span x-text="'Tax (' + (taxRate || 0) + '%)'"></span><strong x-text="'$' + taxAmount.toFixed(2)"></strong></p>
+					<p class="total"><span>Total</span><strong x-text="'$' + total.toFixed(2)"></strong></p>
+				</section>
 
-                            <div class="space-y-3">
-                                <template x-for="(expense, index) in expenses" :key="expense.id">
-                                    <div class="flex gap-3 items-end p-4 rounded-lg bg-muted/20 border border-border/50 hover:border-border transition-colors">
-                                        <div class="flex-1 space-y-2">
-                                            <label class="text-xs text-muted-foreground">Description</label>
-                                            <input class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 bg-input border-border text-foreground placeholder:text-muted-foreground focus:border-ring" 
-                                                   type="text" :name="'expenses[' + index + '][description]'" x-model="expense.description" placeholder="Item description" required />
-                                        </div>
-
-                                        <div class="w-40 space-y-2">
-                                            <label class="text-xs text-muted-foreground">Cost</label>
-                                            <input class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 bg-input border-border text-foreground placeholder:text-muted-foreground focus:border-ring" 
-                                                   type="number" step="0.01" min="0" :name="'expenses[' + index + '][cost]'" x-model="expense.cost" placeholder="0.00" required />
-                                        </div>
-
-                                        <button type="button" @click="removeExpense(expense.id)" 
-                                                class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10" 
-                                                :disabled="expenses.length === 1">
-                                            <i data-lucide="trash-2" class="size-4"></i>
-                                        </button>
-                                    </div>
-                                </template>
-                            </div>
-                        </div>
-
-                        <!-- Tax Rate -->
-                        <div class="space-y-6">
-                            <div>
-                                <h3 class="text-sm text-foreground mb-4">Tax Information</h3>
-                                <div data-orientation="horizontal" role="none" class="shrink-0 bg-border h-[1px] w-full bg-border"></div>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-6">
-                                <div class="space-y-2">
-                                    <label class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground" for="taxRate">
-                                        Tax Rate (%)
-                                    </label>
-                                    <input class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 bg-input border-border text-foreground placeholder:text-muted-foreground focus:border-ring" 
-                                           id="taxRate" name="taxRate" type="number" step="0.01" min="0" max="100" x-model="invoiceTaxRate" placeholder="0.00" required />
-                                </div>
-                            </div>
-                            </div>
-
-                            <!-- Summary -->
-                            <div class="space-y-4 p-6 rounded-lg bg-background/50 border border-border shadow-inner">
-                                <div class="flex justify-between text-sm">
-                                    <span class="text-muted-foreground">Subtotal</span>
-                                    <span class="text-foreground font-mono" x-text="'$' + subtotal.toFixed(2)"></span>
-                                </div>
-                                <div class="flex justify-between text-sm">
-                                    <span class="text-muted-foreground" x-text="'Tax (' + (invoiceTaxRate || 0) + '%)'"></span>
-                                    <span class="text-foreground font-mono" x-text="'$' + taxAmount.toFixed(2)"></span>
-                                </div>
-                                <div class="shrink-0 bg-border h-[1px] w-full bg-accent/20"></div>
-                                <div class="flex justify-between">
-                                    <span class="text-foreground">Total</span>
-                                    <span class="text-xl text-accent font-mono" x-text="'$' + total.toFixed(2)"></span>
-                                </div>
-                            </div>
-
-                        <!-- Submit Button -->
-                        <div class="flex justify-end pt-4">
-                            <button type="submit" 
-                                    :disabled="isGenerating"
-                                    class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-12"
-                                    style="padding-left: 4rem; padding-right: 4rem; cursor: pointer;">
-                                
-                                <template x-if="!isGenerating">
-                                    <div class="flex items-center">
-                                        <i data-lucide="receipt" class="size-4 mr-2"></i>
-                                        <span>Generate Invoice</span>
-                                    </div>
-                                </template>
-
-                                <template x-if="isGenerating">
-                                    <div class="flex items-center">
-                                        <svg class="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        <span>Generating...</span>
-                                    </div>
-                                </template>
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </main>
-    </div>
+				<div class="actions">
+					<button type="submit" :disabled="submitting" x-text="submitting ? 'Generating...' : 'Generate Invoice'"></button>
+				</div>
+			</form>
+		</main>
+	</div>
 </body>
 </html>
