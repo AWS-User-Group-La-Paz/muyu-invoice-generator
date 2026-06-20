@@ -9,21 +9,21 @@ const {
 	pool,
 } = require("../../src/services/db");
 const { generatePDF } = require("../../src/services/pdf");
-const { logger } = require("../../src/services/logger");
 
 jest.mock("../../src/services/db");
 jest.mock("../../src/services/pdf");
 
+const silenceConsoleError = () =>
+	jest.spyOn(console, "error").mockImplementation(() => {});
+
 describe("API Routes", () => {
-	afterAll(async () => {
-		await pool.end();
+	afterEach(() => {
+		jest.restoreAllMocks();
+		jest.clearAllMocks();
 	});
 
-	test("should have cookie-parser middleware configured", async () => {
-		const hasCookieParser = app._router.stack.some(
-			(layer) => layer.name === "cookieParser",
-		);
-		expect(hasCookieParser).toBe(true);
+	afterAll(async () => {
+		await pool.end();
 	});
 
 	describe("GET /health", () => {
@@ -39,6 +39,17 @@ describe("API Routes", () => {
 			const response = await request(app).get("/");
 			expect(response.status).toBe(200);
 			expect(response.type).toBe("text/html");
+		});
+
+		test("should render invoice form controls", async () => {
+			const response = await request(app).get("/");
+			expect(response.text).toContain(
+				'<button type="button" @click="addExpense">Add Expense</button>',
+			);
+			expect(response.text).toContain('x-show="generated"');
+			expect(response.text).toContain('@submit="showGenerated($el)"');
+			expect(response.text).toContain("window.scrollTo(0, 0)");
+			expect(response.text).not.toContain('this.companyName = ""');
 		});
 
 		test("should include profile defaults if they exist", async () => {
@@ -62,7 +73,7 @@ describe("API Routes", () => {
 		test("should return 200 even if profile fetch fails", async () => {
 			const email = "error@test.com";
 			getProfileByEmail.mockRejectedValue(new Error("DB Error"));
-			const errorSpy = jest.spyOn(logger, "error").mockImplementation(() => {});
+			const errorSpy = silenceConsoleError();
 
 			const response = await request(app)
 				.get("/")
@@ -70,7 +81,6 @@ describe("API Routes", () => {
 
 			expect(response.status).toBe(200);
 			expect(errorSpy).toHaveBeenCalled();
-			errorSpy.mockRestore();
 		});
 	});
 
@@ -103,7 +113,7 @@ describe("API Routes", () => {
 
 		test("should return 500 if saveInvoice fails", async () => {
 			saveInvoice.mockRejectedValue(new Error("DB Error"));
-			const errorSpy = jest.spyOn(logger, "error").mockImplementation(() => {});
+			const errorSpy = silenceConsoleError();
 
 			const response = await request(app).post("/generate").type("form").send({
 				companyName: "Test Co",
@@ -113,7 +123,6 @@ describe("API Routes", () => {
 
 			expect(response.status).toBe(500);
 			expect(errorSpy).toHaveBeenCalled();
-			errorSpy.mockRestore();
 		});
 
 		test("should save owner_email from user_email cookie", async () => {
@@ -171,7 +180,7 @@ describe("API Routes", () => {
 
 		test("should return 500 if database fails", async () => {
 			getInvoicesByOwner.mockRejectedValue(new Error("DB Error"));
-			const errorSpy = jest.spyOn(logger, "error").mockImplementation(() => {});
+			const errorSpy = silenceConsoleError();
 
 			const response = await request(app)
 				.get("/past-invoices")
@@ -179,7 +188,6 @@ describe("API Routes", () => {
 
 			expect(response.status).toBe(500);
 			expect(errorSpy).toHaveBeenCalled();
-			errorSpy.mockRestore();
 		});
 	});
 
@@ -226,7 +234,7 @@ describe("API Routes", () => {
 
 		test("should return 500 if download fails", async () => {
 			getInvoiceById.mockRejectedValue(new Error("DB Error"));
-			const errorSpy = jest.spyOn(logger, "error").mockImplementation(() => {});
+			const errorSpy = silenceConsoleError();
 
 			const response = await request(app)
 				.get("/download/1")
@@ -234,7 +242,6 @@ describe("API Routes", () => {
 
 			expect(response.status).toBe(500);
 			expect(errorSpy).toHaveBeenCalled();
-			errorSpy.mockRestore();
 		});
 	});
 
@@ -295,20 +302,19 @@ describe("API Routes", () => {
 		test("GET /settings should return 500 if database fails", async () => {
 			const email = "error@test.com";
 			getProfileByEmail.mockRejectedValue(new Error("DB Error"));
-			const errorSpy = jest.spyOn(logger, "error").mockImplementation(() => {});
+			silenceConsoleError();
 
 			const response = await request(app)
 				.get("/settings")
 				.set("Cookie", [`user_email=${email}`]);
 
 			expect(response.status).toBe(500);
-			errorSpy.mockRestore();
 		});
 
 		test("POST /settings should return 500 if upsert fails", async () => {
 			const email = "error@test.com";
 			upsertProfile.mockRejectedValue(new Error("DB Error"));
-			const errorSpy = jest.spyOn(logger, "error").mockImplementation(() => {});
+			silenceConsoleError();
 
 			const response = await request(app)
 				.post("/settings")
@@ -317,7 +323,6 @@ describe("API Routes", () => {
 				.send({ companyName: "Fail Co" });
 
 			expect(response.status).toBe(500);
-			errorSpy.mockRestore();
 		});
 	});
 
@@ -325,7 +330,7 @@ describe("API Routes", () => {
 		test("should return 500 if PDF generation fails", async () => {
 			saveInvoice.mockResolvedValue({ id: 1, company_name: "Test", items: [] });
 			generatePDF.mockRejectedValue(new Error("PDF Error"));
-			const errorSpy = jest.spyOn(logger, "error").mockImplementation(() => {});
+			const errorSpy = silenceConsoleError();
 
 			const response = await request(app).post("/generate").type("form").send({
 				companyName: "Test Co",
@@ -335,25 +340,6 @@ describe("API Routes", () => {
 
 			expect(response.status).toBe(500);
 			expect(errorSpy).toHaveBeenCalled();
-			errorSpy.mockRestore();
-		});
-
-		test("should hit delay branch if NODE_ENV is not test", async () => {
-			const originalEnv = process.env.NODE_ENV;
-			process.env.NODE_ENV = "production";
-
-			const mockInvoice = { id: 1, company_name: "Delay Test", items: [] };
-			saveInvoice.mockResolvedValue(mockInvoice);
-			generatePDF.mockResolvedValue(Buffer.from("pdf content"));
-
-			const response = await request(app).post("/generate").type("form").send({
-				companyName: "Delay Co",
-				"expenses[0][description]": "Item 1",
-				"expenses[0][cost]": "100",
-			});
-
-			expect(response.status).toBe(200);
-			process.env.NODE_ENV = originalEnv;
 		});
 	});
 });

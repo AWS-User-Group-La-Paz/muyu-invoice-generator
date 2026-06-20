@@ -13,7 +13,7 @@ AWS_PAGER = ""
 
 [tasks.start]
 description = "Install dependencies and start the application"
-run = "npm install && npm start"
+run = "npm start"
 
 [tasks.test]
 description = "Run all tests and generate coverage report"

@@ -1,14 +1,3 @@
-/**
- * Business logic for invoice calculations.
- * Extracted into a service for testing and reusability.
- */
-
-/**
- * Calculates subtotal, tax amount, and total for an invoice.
- * @param {Array} expenses - Array of expense objects { description, cost }
- * @param {number|string} taxRate - Tax rate percentage
- * @returns {Object} { subtotal, taxAmount, total }
- */
 function calculateInvoice(expenses, taxRate) {
 	const items = Array.isArray(expenses) ? Object.values(expenses) : [];
 

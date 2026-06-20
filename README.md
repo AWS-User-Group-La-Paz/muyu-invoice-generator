@@ -28,7 +28,7 @@ Before running the application, ensure you have the following tools installed:
 ### 1. Database Setup
 Launch the containerized PostgreSQL instance in the background:
 ```bash
-docker-compose up -d
+docker compose up -d db
 ```
 
 ### 2. Environment Configuration
@@ -58,8 +58,9 @@ npm run dev
 ### Running Tests
 The project enforces high code coverage (>80%) for all backend logic and routes using Jest:
 ```bash
-npm test
+npm run test:db
 ```
+Tests always use `invoice_test_db` on local port `5433`.
 
 ### Linting & Formatting
 The project uses Biome for blazing-fast, zero-config linting and code formatting:
