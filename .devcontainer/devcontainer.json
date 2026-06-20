@@ -1,0 +1,26 @@
+{
+	"name": "Muyu Invoice Generator",
+	"image": "mcr.microsoft.com/devcontainers/javascript-node:24",
+	"features": {
+		"ghcr.io/itsmechlark/features/postgresql:1": {
+			"version": "16"
+		}
+	},
+	"containerEnv": {
+		"DATABASE_URL": "postgres://postgres@localhost:5432/postgres",
+		"PORT": "3000"
+	},
+	"forwardPorts": [3000],
+	"postCreateCommand": "npm ci && sudo service postgresql start && (sudo -u postgres psql -tc \"SELECT 1 FROM pg_database WHERE datname = 'invoice_test_db'\" | grep -q 1 || sudo -u postgres createdb invoice_test_db)",
+	"postStartCommand": "sudo service postgresql start",
+	"postAttachCommand": "npm run dev",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"biomejs.biome",
+				"GitHub.vscode-github-actions",
+				"ms-azuretools.vscode-docker"
+			]
+		}
+	}
+}

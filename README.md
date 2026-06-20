@@ -47,6 +47,14 @@ mise run start
 ```
 The application will be accessible at `http://localhost:3000`.
 
+### Codespaces
+Open the repo in Codespaces. Dependencies install automatically, PostgreSQL runs inside the dev container, and the app starts with:
+```bash
+npm run dev
+```
+Use the forwarded `3000` port to open the app.
+Run tests in Codespaces with `npm test`.
+
 ## Development & Quality Control
 
 ### Local Development
