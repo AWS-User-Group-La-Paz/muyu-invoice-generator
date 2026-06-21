@@ -18,41 +18,44 @@
 			<footer>Logged in as: <%= email %></footer>
 		</aside>
 
-		<main>
-			<section class="page-header">
-				<h1>Past Invoices</h1>
-				<p>View and re-download your previously generated invoices</p>
-			</section>
+			<main>
+				<section class="page-header">
+					<div>
+						<p class="kicker">Ledger</p>
+						<h1>Past Invoices</h1>
+						<p>Review previously generated invoices and download a fresh PDF when you need it.</p>
+					</div>
+				</section>
 
-			<section class="panel">
-				<table>
-					<thead>
-						<tr>
-							<th>Date</th>
-							<th>Company</th>
-							<th class="number">Total</th>
-							<th>Action</th>
-						</tr>
-					</thead>
-					<tbody>
-						<% if (invoices.length === 0) { %>
+				<section class="invoice-table-wrap" aria-label="Past invoices">
+					<table class="invoice-table">
+						<thead>
 							<tr>
-								<td colspan="4" class="empty">No invoices found for this email.</td>
+								<th>Date</th>
+								<th>Company</th>
+								<th class="number">Total</th>
+								<th>Action</th>
 							</tr>
-						<% } else { %>
-							<% invoices.forEach(invoice => { %>
+						</thead>
+						<tbody>
+							<% if (invoices.length === 0) { %>
 								<tr>
-									<td><%= new Date(invoice.created_at).toLocaleDateString() %></td>
-									<td><%= invoice.company_name %></td>
-									<td class="number">$<%= parseFloat(invoice.total).toFixed(2) %></td>
-									<td><a class="button secondary" href="/download/<%= invoice.id %>">Download</a></td>
+									<td colspan="4" class="empty">No invoices found for this email.</td>
 								</tr>
-							<% }) %>
-						<% } %>
-					</tbody>
-				</table>
-			</section>
-		</main>
+							<% } else { %>
+								<% invoices.forEach(invoice => { %>
+									<tr>
+										<td data-label="Date"><%= new Date(invoice.created_at).toLocaleDateString() %></td>
+										<td data-label="Company"><%= invoice.company_name %></td>
+										<td data-label="Total" class="number">$<%= parseFloat(invoice.total).toFixed(2) %></td>
+										<td data-label="Action"><a class="button secondary" href="/download/<%= invoice.id %>">Download</a></td>
+									</tr>
+								<% }) %>
+							<% } %>
+						</tbody>
+					</table>
+				</section>
+			</main>
 	</div>
 </body>
 </html>

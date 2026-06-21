@@ -43,12 +43,16 @@ describe("API Routes", () => {
 
 		test("should render invoice form controls", async () => {
 			const response = await request(app).get("/");
-			expect(response.text).toContain(
-				'<button type="button" @click="addExpense">Add Expense</button>',
-			);
+			expect(response.text).toContain("<dialog");
+			expect(response.text).toContain("SameSite=Lax");
+			expect(response.text).toContain('autocomplete="email"');
+			expect(response.text).toContain('inputmode="email"');
+			expect(response.text).toContain('@click="addExpense"');
+			expect(response.text).toContain("Add Expense</button>");
 			expect(response.text).toContain('x-show="generated"');
 			expect(response.text).toContain('@submit="showGenerated($el)"');
 			expect(response.text).toContain("window.scrollTo(0, 0)");
+			expect(response.text).not.toContain("window.location.reload");
 			expect(response.text).not.toContain('this.companyName = ""');
 		});
 
