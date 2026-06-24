@@ -43,12 +43,24 @@ describe("API Routes", () => {
 
 		test("should render invoice form controls", async () => {
 			const response = await request(app).get("/");
+			expect(response.text).toContain("<dialog");
+			expect(response.text).toContain("SameSite=Lax");
+			expect(response.text).toContain('autocomplete="email"');
+			expect(response.text).toContain('inputmode="email"');
+			expect(response.text).toContain('aria-labelledby="email-modal-title"');
 			expect(response.text).toContain(
-				'<button type="button" @click="addExpense">Add Expense</button>',
+				'aria-describedby="email-modal-description"',
 			);
-			expect(response.text).toContain('x-show="generated"');
-			expect(response.text).toContain('@submit="showGenerated($el)"');
-			expect(response.text).toContain("window.scrollTo(0, 0)");
+			expect(response.text).toContain('@click="addExpense"');
+			expect(response.text).toContain("Add Line Item</button>");
+			expect(response.text).toContain('aria-current="page"');
+			expect(response.text).toContain('href="/?changeEmail=1"');
+			expect(response.text).not.toContain('x-show="generated"');
+			expect(response.text).not.toContain("showGenerated");
+			expect(response.text).not.toContain("window.scrollTo(0, 0)");
+			expect(response.text).not.toContain("resetExpenses");
+			expect(response.text).not.toContain("x-init=");
+			expect(response.text).not.toContain("window.location.reload");
 			expect(response.text).not.toContain('this.companyName = ""');
 		});
 
@@ -122,6 +134,8 @@ describe("API Routes", () => {
 			});
 
 			expect(response.status).toBe(500);
+			expect(response.text).toContain('class="shell"');
+			expect(response.text).toContain("Invoice failed");
 			expect(errorSpy).toHaveBeenCalled();
 		});
 
@@ -175,7 +189,25 @@ describe("API Routes", () => {
 				.set("Cookie", [`user_email=${email}`]);
 
 			expect(response.status).toBe(200);
+			expect(response.text).toContain('aria-current="page"');
+			expect(response.text).toContain('headers="invoice-date"');
+			expect(response.text).toContain('class="cell-label" aria-hidden="true"');
+			expect(response.text).not.toContain("data-label=");
 			expect(getInvoicesByOwner).toHaveBeenCalledWith(email);
+		});
+
+		test("should render an actionable empty state", async () => {
+			const email = "empty@test.com";
+			getInvoicesByOwner.mockResolvedValue([]);
+
+			const response = await request(app)
+				.get("/past-invoices")
+				.set("Cookie", [`user_email=${email}`]);
+
+			expect(response.status).toBe(200);
+			expect(response.text).toContain("No invoices yet");
+			expect(response.text).toContain('href="/"');
+			expect(response.text).toContain("Create Invoice");
 		});
 
 		test("should return 500 if database fails", async () => {
@@ -187,6 +219,8 @@ describe("API Routes", () => {
 				.set("Cookie", ["user_email=test@test.com"]);
 
 			expect(response.status).toBe(500);
+			expect(response.text).toContain('class="shell"');
+			expect(response.text).toContain("Invoice history unavailable");
 			expect(errorSpy).toHaveBeenCalled();
 		});
 	});
@@ -200,6 +234,8 @@ describe("API Routes", () => {
 				.set("Cookie", ["user_email=test@test.com"]);
 
 			expect(response.status).toBe(404);
+			expect(response.text).toContain('class="shell"');
+			expect(response.text).toContain("Invoice not found");
 		});
 
 		test("should return 403 if owner mismatch", async () => {
@@ -213,6 +249,8 @@ describe("API Routes", () => {
 				.set("Cookie", ["user_email=hacker@test.com"]);
 
 			expect(response.status).toBe(403);
+			expect(response.text).toContain('class="shell"');
+			expect(response.text).toContain("Invoice unavailable");
 		});
 
 		test("should return 200 and PDF if owner matches", async () => {
@@ -241,6 +279,8 @@ describe("API Routes", () => {
 				.set("Cookie", ["user_email=owner@test.com"]);
 
 			expect(response.status).toBe(500);
+			expect(response.text).toContain('class="shell"');
+			expect(response.text).toContain("Download failed");
 			expect(errorSpy).toHaveBeenCalled();
 		});
 	});
@@ -262,6 +302,7 @@ describe("API Routes", () => {
 
 			expect(response.status).toBe(200);
 			expect(response.type).toBe("text/html");
+			expect(response.text).toContain('aria-current="page"');
 		});
 
 		test("POST /settings should save profile and redirect", async () => {
@@ -297,6 +338,8 @@ describe("API Routes", () => {
 				.send({ companyName: "Hacker Co" });
 
 			expect(response.status).toBe(401);
+			expect(response.text).toContain('class="shell"');
+			expect(response.text).toContain("Email required");
 		});
 
 		test("GET /settings should return 500 if database fails", async () => {
@@ -309,6 +352,8 @@ describe("API Routes", () => {
 				.set("Cookie", [`user_email=${email}`]);
 
 			expect(response.status).toBe(500);
+			expect(response.text).toContain('class="shell"');
+			expect(response.text).toContain("Settings unavailable");
 		});
 
 		test("POST /settings should return 500 if upsert fails", async () => {
@@ -323,6 +368,8 @@ describe("API Routes", () => {
 				.send({ companyName: "Fail Co" });
 
 			expect(response.status).toBe(500);
+			expect(response.text).toContain('class="shell"');
+			expect(response.text).toContain("Settings not saved");
 		});
 	});
 
@@ -339,6 +386,8 @@ describe("API Routes", () => {
 			});
 
 			expect(response.status).toBe(500);
+			expect(response.text).toContain('class="shell"');
+			expect(response.text).toContain("Invoice failed");
 			expect(errorSpy).toHaveBeenCalled();
 		});
 	});

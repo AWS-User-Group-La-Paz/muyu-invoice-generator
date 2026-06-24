@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title><%= title %> - Muyu</title>
+	<link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+	<div class="shell">
+		<aside class="sidebar">
+			<header>
+				Muyu: Invoice Generator
+				<span class="sidebar-subtitle">Invoices for contractors</span>
+			</header>
+			<nav>
+				<a href="/">Create Invoice</a>
+				<a href="/past-invoices">Past Invoices</a>
+				<a href="/settings">Settings</a>
+			</nav>
+			<footer>
+				<span><%= email ? `Logged in as: ${email}` : "No email selected" %></span>
+				<a class="sidebar-action" href="/?changeEmail=1">Change email</a>
+			</footer>
+		</aside>
+
+			<main>
+				<section class="page-header">
+					<div>
+						<p class="kicker">Request issue</p>
+						<h1><%= title %></h1>
+						<p><%= message %></p>
+					</div>
+					<div class="header-meter">
+						<span>Status</span>
+						<strong><%= status %></strong>
+					</div>
+				</section>
+
+				<section class="panel">
+					<h2>Next Step</h2>
+					<p class="panel-note">Go back to the invoice builder, check your email key, or retry the action.</p>
+					<div class="actions">
+						<a class="button secondary" href="/past-invoices">Past Invoices</a>
+						<a class="button" href="/">Create Invoice</a>
+					</div>
+				</section>
+			</main>
+	</div>
+</body>
+</html>

@@ -29,7 +29,9 @@ app.set("views", path.join(__dirname, "../views"));
 app.use(express.static(path.join(__dirname, "../public")));
 app.use(express.urlencoded({ extended: true }));
 
-// Routes
+const renderError = (res, status, title, message, email = "") =>
+	res.status(status).render("error", { status, title, message, email });
+
 app.get("/health", (_req, res) => {
 	res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
 });
@@ -55,7 +57,13 @@ app.get("/past-invoices", async (req, res) => {
 		res.render("past-invoices", { invoices, email });
 	} catch (error) {
 		console.error("Error fetching past invoices:", error);
-		res.status(500).send("An error occurred while fetching your history.");
+		renderError(
+			res,
+			500,
+			"Invoice history unavailable",
+			"We could not load your saved invoices. Please try again.",
+			req.cookies.user_email,
+		);
 	}
 });
 
@@ -69,7 +77,13 @@ app.get("/settings", async (req, res) => {
 		res.render("settings", { profile, email });
 	} catch (error) {
 		console.error("Error fetching settings:", error);
-		res.status(500).send("An error occurred while fetching settings.");
+		renderError(
+			res,
+			500,
+			"Settings unavailable",
+			"We could not load your saved defaults. Please try again.",
+			req.cookies.user_email,
+		);
 	}
 });
 
@@ -77,7 +91,12 @@ app.post("/settings", async (req, res) => {
 	try {
 		const email = req.cookies.user_email;
 		if (!email) {
-			return res.status(401).send("Unauthorized");
+			return renderError(
+				res,
+				401,
+				"Email required",
+				"Enter an email before saving invoice defaults.",
+			);
 		}
 		const { companyName, companyDetails, taxRate } = req.body;
 		await upsertProfile({
@@ -89,7 +108,13 @@ app.post("/settings", async (req, res) => {
 		res.redirect("/settings?success=1");
 	} catch (error) {
 		console.error("Error saving settings:", error);
-		res.status(500).send("An error occurred while saving settings.");
+		renderError(
+			res,
+			500,
+			"Settings not saved",
+			"We could not save your defaults. Your form values were not changed.",
+			req.cookies.user_email,
+		);
 	}
 });
 
@@ -99,11 +124,23 @@ app.get("/download/:id", async (req, res) => {
 		const invoice = await getInvoiceById(req.params.id);
 
 		if (!invoice) {
-			return res.status(404).send("Invoice not found.");
+			return renderError(
+				res,
+				404,
+				"Invoice not found",
+				"We could not find an invoice with that download link.",
+				email,
+			);
 		}
 
 		if (invoice.owner_email !== email) {
-			return res.status(403).send("Unauthorized to access this invoice.");
+			return renderError(
+				res,
+				403,
+				"Invoice unavailable",
+				"This invoice belongs to a different email key.",
+				email,
+			);
 		}
 
 		const pdfBuffer = await generatePDF(invoice);
@@ -116,7 +153,13 @@ app.get("/download/:id", async (req, res) => {
 		res.send(pdfBuffer);
 	} catch (error) {
 		console.error("Error downloading invoice:", error);
-		res.status(500).send("An error occurred while downloading the invoice.");
+		renderError(
+			res,
+			500,
+			"Download failed",
+			"We could not prepare this invoice PDF. Please try again.",
+			req.cookies.user_email,
+		);
 	}
 });
 
@@ -126,7 +169,13 @@ app.post("/generate", async (req, res) => {
 		const userEmail = req.cookies.user_email;
 
 		if (!expenses) {
-			return res.status(400).send("At least one expense is required.");
+			return renderError(
+				res,
+				400,
+				"Invoice missing line items",
+				"Add at least one billable line item before generating a PDF.",
+				userEmail,
+			);
 		}
 
 		const invoiceData = calculateInvoice(expenses, taxRate);
@@ -148,7 +197,13 @@ app.post("/generate", async (req, res) => {
 		res.send(pdfBuffer);
 	} catch (error) {
 		console.error("Error generating invoice:", error);
-		res.status(500).send("An error occurred while generating the invoice.");
+		renderError(
+			res,
+			500,
+			"Invoice failed",
+			"We could not save or generate the PDF. Your browser should still have the draft.",
+			req.cookies.user_email,
+		);
 	}
 });
 

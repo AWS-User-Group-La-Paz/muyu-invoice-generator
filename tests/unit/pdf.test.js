@@ -30,12 +30,24 @@ describe("generatePDF", () => {
 
 	beforeEach(() => {
 		mockDoc = {
+			page: {
+				width: 612,
+				height: 792,
+				margins: { top: 50, bottom: 50, left: 50, right: 50 },
+			},
 			on: jest.fn(),
+			addPage: jest.fn().mockReturnThis(),
+			font: jest.fn().mockReturnThis(),
 			fontSize: jest.fn().mockReturnThis(),
+			fillColor: jest.fn().mockReturnThis(),
+			fill: jest.fn().mockReturnThis(),
+			lineWidth: jest.fn().mockReturnThis(),
+			rect: jest.fn().mockReturnThis(),
 			text: jest.fn().mockReturnThis(),
 			moveDown: jest.fn().mockReturnThis(),
 			moveTo: jest.fn().mockReturnThis(),
 			lineTo: jest.fn().mockReturnThis(),
+			strokeColor: jest.fn().mockReturnThis(),
 			stroke: jest.fn().mockReturnThis(),
 			end: jest.fn(),
 		};
@@ -55,10 +67,63 @@ describe("generatePDF", () => {
 		);
 
 		expect(pdfBuffer).toBeInstanceOf(Buffer);
-		expect(mockDoc.fontSize).toHaveBeenCalledWith(25);
-		expect(mockDoc.text).toHaveBeenCalledWith("INVOICE", expect.any(Object));
+		expect(PDFDocument).toHaveBeenCalledWith({
+			margin: 50,
+			size: "LETTER",
+		});
+		expect(mockDoc.font).toHaveBeenCalledWith("Helvetica-Bold");
+		expect(mockDoc.text).toHaveBeenCalledWith("Invoice", expect.any(Object));
 		expect(mockDoc.text).toHaveBeenCalledWith("Test Co");
+		expect(mockDoc.text).toHaveBeenCalledWith("Line Items", expect.any(Object));
+		expect(mockDoc.text).toHaveBeenCalledWith("TOTAL", expect.any(Object));
 		expect(mockDoc.end).toHaveBeenCalled();
+	});
+
+	test("should render optional customer billing block when supplied", async () => {
+		finishPdf();
+
+		await generatePDF(
+			invoice({
+				customer_name: "Client LLC",
+				customer_details: "42 Worksite Ave",
+			}),
+		);
+
+		expect(mockDoc.text).toHaveBeenCalledWith("Bill To", expect.any(Object));
+		expect(mockDoc.text).toHaveBeenCalledWith("Client LLC");
+		expect(mockDoc.text).toHaveBeenCalledWith(
+			"42 Worksite Ave",
+			expect.any(Object),
+		);
+	});
+
+	test("should add pages for long line item lists", async () => {
+		finishPdf();
+
+		await generatePDF(
+			invoice({
+				items: Array.from({ length: 40 }, (_, index) => ({
+					description: `Line item ${index + 1}`,
+					cost: 25,
+				})),
+				subtotal: 1000,
+				total: 1000,
+			}),
+		);
+
+		expect(mockDoc.addPage).toHaveBeenCalled();
+		expect(mockDoc.rect).toHaveBeenCalledTimes(
+			mockDoc.addPage.mock.calls.length + 1,
+		);
+	});
+
+	test("should paint pages with an explicit white background", async () => {
+		finishPdf();
+
+		await generatePDF(invoice());
+
+		expect(mockDoc.rect).toHaveBeenCalledWith(0, 0, 612, 792);
+		expect(mockDoc.fill).toHaveBeenCalledWith("#ffffff");
 	});
 
 	test("should normalize newlines in company_details", async () => {
@@ -70,7 +135,10 @@ describe("generatePDF", () => {
 			}),
 		);
 
-		expect(mockDoc.text).toHaveBeenCalledWith("Line 1\nLine 2");
+		expect(mockDoc.text).toHaveBeenCalledWith(
+			"Line 1\nLine 2",
+			expect.any(Object),
+		);
 	});
 
 	test("should handle missing company_details", async () => {
@@ -78,6 +146,7 @@ describe("generatePDF", () => {
 
 		await generatePDF(invoice({ company_details: null }));
 
-		expect(mockDoc.text).toHaveBeenCalledWith("");
+		expect(mockDoc.text).toHaveBeenCalledWith("Test Co");
+		expect(mockDoc.text).not.toHaveBeenCalledWith("");
 	});
 });
