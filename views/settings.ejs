@@ -7,17 +7,23 @@
 	<link rel="stylesheet" href="/css/main.css">
 	<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
 </head>
-<body>
-	<div class="shell">
-		<aside class="sidebar">
-			<header>Muyu: Invoice Generator</header>
-			<nav>
-				<a href="/">Create Invoice</a>
-				<a href="/past-invoices">Past Invoices</a>
-				<a class="active" href="/settings">Settings</a>
-			</nav>
-			<footer>Logged in as: <%= email %></footer>
-		</aside>
+	<body>
+		<div class="shell">
+			<aside class="sidebar">
+				<header>
+					Muyu: Invoice Generator
+					<span class="sidebar-subtitle">Invoices for contractors</span>
+				</header>
+				<nav>
+					<a href="/">Create Invoice</a>
+					<a href="/past-invoices">Past Invoices</a>
+					<a class="active" aria-current="page" href="/settings">Settings</a>
+				</nav>
+				<footer>
+					<span>Logged in as: <%= email %></span>
+					<a class="sidebar-action" href="/?changeEmail=1">Change email</a>
+				</footer>
+			</aside>
 
 			<main>
 				<section class="page-header">
