@@ -97,6 +97,53 @@ describe("generatePDF", () => {
 		);
 	});
 
+	test("should place line items after long customer billing details", async () => {
+		finishPdf();
+		mockDoc.text.mockImplementation((text, ..._args) => {
+			if (text === "Client LLC") {
+				mockDoc.y = 198;
+			}
+			if (String(text).includes("PO 123")) {
+				mockDoc.y = 288;
+			}
+			return mockDoc;
+		});
+
+		await generatePDF(
+			invoice({
+				customer_name: "Client LLC",
+				customer_details: "42 Worksite Ave\nAccounts Payable\nPO 123",
+			}),
+		);
+
+		expect(mockDoc.text).toHaveBeenCalledWith("Description", 50, 336, {
+			width: 330,
+		});
+	});
+
+	test("should keep line item header with first row after long customer billing details", async () => {
+		finishPdf();
+		mockDoc.text.mockImplementation((text) => {
+			if (String(text).includes("PO 123")) {
+				mockDoc.y = 674;
+			}
+			return mockDoc;
+		});
+
+		await generatePDF(
+			invoice({
+				customer_name: "Client LLC",
+				customer_details: "42 Worksite Ave\nAccounts Payable\nPO 123",
+				items: [{ description: "Item 1", cost: 100 }],
+			}),
+		);
+
+		expect(mockDoc.addPage).toHaveBeenCalled();
+		expect(mockDoc.text).toHaveBeenCalledWith("Description", 50, 74, {
+			width: 330,
+		});
+	});
+
 	test("should add pages for long line item lists", async () => {
 		finishPdf();
 

@@ -12,7 +12,6 @@
 			<aside class="sidebar">
 				<header>
 					Muyu: Invoice Generator
-					<span class="sidebar-subtitle">Invoices for contractors</span>
 				</header>
 				<nav>
 					<a href="/">Create Invoice</a>
@@ -28,9 +27,7 @@
 			<main>
 				<section class="page-header">
 					<div>
-						<p class="kicker">Defaults</p>
 						<h1>Settings</h1>
-						<p>Set the company details and tax rate Muyu should preload into new invoice drafts.</p>
 					</div>
 				</section>
 
@@ -41,42 +38,34 @@
 					x-cloak
 					role="status"
 				>
-					<span>Settings saved successfully.</span>
+					<span>Settings saved.</span>
 					<button type="button" class="link" @click="show = false; history.replaceState({}, document.title, location.pathname)">Dismiss</button>
 				</div>
 
-				<form class="workspace-grid" action="/settings" method="POST">
-					<div class="form-stack">
-						<fieldset class="panel">
-							<legend>Company Defaults</legend>
-							<p class="panel-note">Saved values appear automatically on the Create Invoice page.</p>
-							<div class="field-grid">
-								<label for="companyName">
-									Default Company Name
-									<input id="companyName" name="companyName" value="<%= profile ? profile.company_name : '' %>" placeholder="Ridgeline Studio">
-								</label>
+				<form class="form-stack" action="/settings" method="POST">
+					<fieldset class="panel">
+						<legend>Defaults</legend>
+						<div class="field-grid">
+							<label for="companyName">
+								Company Name
+								<input id="companyName" name="companyName" value="<%= profile ? profile.company_name : '' %>" placeholder="Ridgeline Studio">
+							</label>
 
-								<label class="wide" for="companyDetails">
-									Default Company Details
-									<textarea id="companyDetails" name="companyDetails" placeholder="Address, contact details, tax ID"><%= profile ? profile.company_details : '' %></textarea>
-								</label>
+							<label class="wide" for="companyDetails">
+								Company Details
+								<textarea id="companyDetails" name="companyDetails" placeholder="Address, contact details, tax ID"><%= profile ? profile.company_details : '' %></textarea>
+							</label>
 
-								<label class="short" for="taxRate">
-									Default Tax Rate (%)
-									<input id="taxRate" name="taxRate" type="number" step="0.01" min="0" max="100" value="<%= profile ? profile.default_tax_rate : '' %>" placeholder="0.00">
-								</label>
-							</div>
-						</fieldset>
-					</div>
-
-					<aside class="ledger-panel">
-						<p class="kicker">Profile</p>
-						<h2>Saved Preset</h2>
-						<p class="panel-note">Keep this short and invoice-ready. You can still override every field on an individual invoice.</p>
-						<div class="ledger-actions">
-							<button type="submit">Save Settings</button>
+							<label class="short" for="taxRate">
+								Tax Rate (%)
+								<input id="taxRate" name="taxRate" type="number" step="0.01" min="0" max="100" value="<%= profile ? profile.default_tax_rate : '' %>" placeholder="0.00">
+							</label>
 						</div>
-					</aside>
+					</fieldset>
+
+					<div class="actions">
+						<button type="submit">Save</button>
+					</div>
 				</form>
 			</main>
 	</div>

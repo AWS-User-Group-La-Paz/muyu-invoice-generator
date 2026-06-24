@@ -18,6 +18,8 @@ async function initDB() {
 	      id SERIAL PRIMARY KEY,
 	      company_name TEXT NOT NULL,
 	      company_details TEXT,
+	      customer_name TEXT,
+	      customer_details TEXT,
 	      owner_email TEXT,
 	      tax_rate NUMERIC,
 	      subtotal NUMERIC,
@@ -29,6 +31,12 @@ async function initDB() {
 
 	await query(
 		`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS owner_email TEXT;`,
+	);
+	await query(
+		`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_name TEXT;`,
+	);
+	await query(
+		`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_details TEXT;`,
 	);
 	await query(
 		`CREATE INDEX IF NOT EXISTS idx_invoices_owner ON invoices(owner_email);`,
@@ -51,6 +59,8 @@ async function saveInvoice(invoiceData) {
 	const {
 		companyName,
 		companyDetails,
+		customerName,
+		customerDetails,
 		taxRate,
 		subtotal,
 		total,
@@ -58,10 +68,12 @@ async function saveInvoice(invoiceData) {
 		owner_email,
 	} = invoiceData;
 	const result = await query(
-		"INSERT INTO invoices (company_name, company_details, tax_rate, subtotal, total, items, owner_email) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+		"INSERT INTO invoices (company_name, company_details, customer_name, customer_details, tax_rate, subtotal, total, items, owner_email) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *",
 		[
 			companyName,
 			companyDetails,
+			customerName || null,
+			customerDetails || null,
 			taxRate,
 			subtotal,
 			total,

@@ -124,7 +124,11 @@ function generatePDF(invoice) {
 					lineGap: 2,
 				});
 			}
-			currentY += 76;
+			currentY = Math.max(currentY + 76, doc.y + 24);
+			if (currentY + 52 + layout.rowHeight > layout.bottom) {
+				addPage(doc);
+				currentY = layout.top;
+			}
 		}
 
 		currentY = drawLineHeader(doc, currentY);

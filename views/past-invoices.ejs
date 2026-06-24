@@ -11,7 +11,6 @@
 			<aside class="sidebar">
 				<header>
 					Muyu: Invoice Generator
-					<span class="sidebar-subtitle">Invoices for contractors</span>
 				</header>
 				<nav>
 					<a href="/">Create Invoice</a>
@@ -27,42 +26,40 @@
 			<main>
 				<section class="page-header">
 					<div>
-						<p class="kicker">Ledger</p>
-						<h1>Past Invoices</h1>
-						<p>Review previously generated invoices and download a fresh PDF when you need it.</p>
+						<h1>Invoices</h1>
 					</div>
-					</section>
+				</section>
 
-					<section class="invoice-table-wrap" aria-label="Past invoices">
-						<% if (invoices.length === 0) { %>
-							<div class="empty-state">
-								<h2>No invoices yet</h2>
-								<p>Generate your first customer invoice and it will appear here for download.</p>
-								<a class="button" href="/">Create Invoice</a>
-							</div>
-						<% } else { %>
-							<table class="invoice-table">
-								<thead>
+				<section class="invoice-table-wrap" aria-label="Past invoices">
+					<% if (invoices.length === 0) { %>
+						<div class="empty-state">
+							<h2>No invoices yet</h2>
+							<p>Create one to download it here.</p>
+							<a class="button" href="/">Create Invoice</a>
+						</div>
+					<% } else { %>
+						<table class="invoice-table">
+							<thead>
+								<tr>
+									<th id="invoice-date">Date</th>
+									<th id="invoice-company">Company</th>
+									<th id="invoice-total" class="number">Total</th>
+									<th id="invoice-action"><span class="sr-only">Action</span></th>
+								</tr>
+							</thead>
+							<tbody>
+								<% invoices.forEach(invoice => { %>
 									<tr>
-										<th id="invoice-date">Date</th>
-										<th id="invoice-company">Company</th>
-										<th id="invoice-total" class="number">Total</th>
-										<th id="invoice-action">Action</th>
+										<td headers="invoice-date"><span class="cell-label" aria-hidden="true">Date</span><span><%= new Date(invoice.created_at).toLocaleDateString() %></span></td>
+										<td headers="invoice-company"><span class="cell-label" aria-hidden="true">Company</span><span><%= invoice.company_name %></span></td>
+										<td headers="invoice-total" class="number"><span class="cell-label" aria-hidden="true">Total</span><span>$<%= parseFloat(invoice.total).toFixed(2) %></span></td>
+										<td headers="invoice-action"><span class="cell-label" aria-hidden="true">Action</span><a class="button secondary" href="/download/<%= invoice.id %>">Download</a></td>
 									</tr>
-								</thead>
-								<tbody>
-									<% invoices.forEach(invoice => { %>
-										<tr>
-											<td headers="invoice-date"><span class="cell-label" aria-hidden="true">Date</span><span><%= new Date(invoice.created_at).toLocaleDateString() %></span></td>
-											<td headers="invoice-company"><span class="cell-label" aria-hidden="true">Company</span><span><%= invoice.company_name %></span></td>
-											<td headers="invoice-total" class="number"><span class="cell-label" aria-hidden="true">Total</span><span>$<%= parseFloat(invoice.total).toFixed(2) %></span></td>
-											<td headers="invoice-action"><span class="cell-label" aria-hidden="true">Action</span><a class="button secondary" href="/download/<%= invoice.id %>">Download</a></td>
-										</tr>
-									<% }) %>
-								</tbody>
-							</table>
-						<% } %>
-					</section>
+								<% }) %>
+							</tbody>
+						</table>
+					<% } %>
+				</section>
 				</main>
 		</div>
 </body>

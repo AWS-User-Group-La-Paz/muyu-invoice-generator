@@ -52,9 +52,10 @@ describe("API Routes", () => {
 				'aria-describedby="email-modal-description"',
 			);
 			expect(response.text).toContain('@click="addExpense"');
-			expect(response.text).toContain("Add Line Item</button>");
 			expect(response.text).toContain('aria-current="page"');
 			expect(response.text).toContain('href="/?changeEmail=1"');
+			expect(response.text).toContain('name="customerName"');
+			expect(response.text).toContain('name="customerDetails"');
 			expect(response.text).not.toContain('x-show="generated"');
 			expect(response.text).not.toContain("showGenerated");
 			expect(response.text).not.toContain("window.scrollTo(0, 0)");
@@ -168,6 +169,27 @@ describe("API Routes", () => {
 				}),
 			);
 		});
+
+		test("should save customer billing fields", async () => {
+			saveInvoice.mockResolvedValue({ id: 1, company_name: "Test", items: [] });
+			generatePDF.mockResolvedValue(Buffer.from("pdf content"));
+
+			const response = await request(app).post("/generate").type("form").send({
+				companyName: "Test Co",
+				customerName: "Client LLC",
+				customerDetails: "42 Worksite Ave",
+				"expenses[0][description]": "Item 1",
+				"expenses[0][cost]": "100",
+			});
+
+			expect(response.status).toBe(200);
+			expect(saveInvoice).toHaveBeenCalledWith(
+				expect.objectContaining({
+					customerName: "Client LLC",
+					customerDetails: "42 Worksite Ave",
+				}),
+			);
+		});
 	});
 
 	describe("GET /past-invoices", () => {
@@ -207,7 +229,6 @@ describe("API Routes", () => {
 			expect(response.status).toBe(200);
 			expect(response.text).toContain("No invoices yet");
 			expect(response.text).toContain('href="/"');
-			expect(response.text).toContain("Create Invoice");
 		});
 
 		test("should return 500 if database fails", async () => {

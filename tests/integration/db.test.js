@@ -29,6 +29,8 @@ describe("Postgres database", () => {
 		const saved = await saveInvoice({
 			companyName: "DB Test Co",
 			companyDetails: "Details",
+			customerName: "Client LLC",
+			customerDetails: "42 Worksite Ave",
 			taxRate: 10,
 			subtotal: 100,
 			total: 110,
@@ -40,6 +42,8 @@ describe("Postgres database", () => {
 		const byOwner = await getInvoicesByOwner(email);
 
 		expect(byId.owner_email).toBe(email);
+		expect(byId.customer_name).toBe("Client LLC");
+		expect(byId.customer_details).toBe("42 Worksite Ave");
 		expect(byOwner.map((invoice) => invoice.id)).toContain(saved.id);
 	});
 

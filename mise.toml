@@ -2,22 +2,26 @@
 node = "24.16.0"
 trivy = "0.71.0"
 packer = "1.10.3"
-shellcheck = "0.10.0"
-awscli = "2.35.1"
 
 [env]
 DATABASE_URL = "postgres://invoice_user:invoice_pass@localhost:5432/invoice_db"
 PORT = "3000"
-AWS_REGION = "us-east-1"
-AWS_PAGER = ""
 
 [tasks.start]
-description = "Install dependencies and start the application"
+description = "Start the application"
 run = "npm start"
+
+[tasks.dev]
+description = "Start the application with Node watch mode"
+run = "npm run dev"
 
 [tasks.test]
 description = "Run all tests and generate coverage report"
 run = "npm test"
+
+[tasks.test-db]
+description = "Start test database and run tests"
+run = "npm run test:db"
 
 [tasks.lint]
 description = "Check for linting errors and formatting issues using Biome"

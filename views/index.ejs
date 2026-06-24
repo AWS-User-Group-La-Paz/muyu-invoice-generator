@@ -27,6 +27,8 @@
 			return {
 				companyName: profile.companyName || "",
 				companyDetails: profile.companyDetails || "",
+				customerName: "",
+				customerDetails: "",
 				taxRate: profile.taxRate || "",
 				expenses: [{ id: 1, description: "", cost: "" }],
 				nextId: 2,
@@ -82,13 +84,13 @@
 		@cancel.prevent
 		x-cloak
 	>
-		<form class="dialog" @submit.prevent="submitEmail">
-			<h1 id="email-modal-title">Start with your email</h1>
-			<p id="email-modal-description">Muyu uses this email as the key for your saved settings, invoice history, and PDF downloads on this device.</p>
-			<label for="userEmail">Email Address</label>
-			<input id="userEmail" type="email" x-model="email" placeholder="your@email.com" autocomplete="email" inputmode="email" autofocus required>
-			<button type="submit">Use Email</button>
-		</form>
+			<form class="dialog" @submit.prevent="submitEmail">
+				<h1 id="email-modal-title">Start with your email</h1>
+				<p id="email-modal-description">Used for settings and history.</p>
+				<label for="userEmail">Email</label>
+				<input id="userEmail" type="email" x-model="email" placeholder="your@email.com" autocomplete="email" inputmode="email" autofocus required>
+				<button type="submit">Continue</button>
+			</form>
 	</dialog>
 
 	<div
@@ -102,7 +104,6 @@
 		<aside class="sidebar">
 			<header>
 				Muyu: Invoice Generator
-				<span class="sidebar-subtitle">Invoices for contractors</span>
 			</header>
 			<nav>
 				<a class="active" aria-current="page" href="/">Create Invoice</a>
@@ -118,21 +119,14 @@
 		<main>
 			<section class="page-header">
 				<div>
-					<p class="kicker">Invoice builder</p>
-					<h1>Build a customer invoice</h1>
-					<p>Add your business details and job line items, then generate a PDF for the customer.</p>
-				</div>
-				<div class="header-meter" aria-live="polite">
-					<span>Draft total</span>
-					<strong x-text="'$' + total.toFixed(2)">$0.00</strong>
+					<h1>Create invoice</h1>
 				</div>
 			</section>
 
 			<form class="workspace-grid" action="/generate" method="POST">
 				<div class="form-stack">
 					<fieldset class="panel">
-						<legend>Your Business</legend>
-						<p class="panel-note">This appears as the sender on the generated invoice.</p>
+						<legend>Business</legend>
 						<div class="field-grid">
 							<label for="companyName">
 								Business Name
@@ -140,17 +134,31 @@
 							</label>
 
 							<label class="wide" for="companyDetails">
-								Business Details
+								Details
 								<textarea id="companyDetails" name="companyDetails" x-model="companyDetails" placeholder="Address, contact details, tax ID" required></textarea>
 							</label>
 						</div>
 					</fieldset>
 
 					<fieldset class="panel">
-						<legend>Job Line Items</legend>
+						<legend>Customer</legend>
+						<div class="field-grid">
+							<label for="customerName">
+								Customer Name
+								<input id="customerName" name="customerName" x-model="customerName" placeholder="Northwind Builders">
+							</label>
+
+							<label class="wide" for="customerDetails">
+								Details
+								<textarea id="customerDetails" name="customerDetails" x-model="customerDetails" placeholder="Address, contact, PO number"></textarea>
+							</label>
+						</div>
+					</fieldset>
+
+					<fieldset class="panel">
+						<legend>Line Items</legend>
 						<div class="split">
-							<p class="panel-note">Each row becomes one billable item on the PDF.</p>
-							<button type="button" class="secondary" @click="addExpense">Add Line Item</button>
+							<button type="button" class="secondary" @click="addExpense">Add Item</button>
 						</div>
 
 						<div class="expense-list">
@@ -171,8 +179,7 @@
 					</fieldset>
 
 					<fieldset class="panel">
-						<legend>Tax Information</legend>
-						<p class="panel-note">Use the default from Settings or override it for this invoice.</p>
+						<legend>Tax</legend>
 						<label class="short" for="taxRate">
 							Tax Rate (%)
 							<input id="taxRate" name="taxRate" type="number" step="0.01" min="0" max="100" x-model="taxRate" placeholder="0.00" required>
@@ -181,8 +188,7 @@
 				</div>
 
 				<aside class="ledger-panel" aria-label="Invoice total">
-					<p class="kicker">Live total</p>
-					<h2>Invoice Summary</h2>
+					<h2>Totals</h2>
 					<section class="summary">
 						<p><span>Subtotal</span><strong x-text="'$' + subtotal.toFixed(2)">$0.00</strong></p>
 						<p><span x-text="'Tax (' + (taxRate || 0) + '%)'">Tax (0%)</span><strong x-text="'$' + taxAmount.toFixed(2)">$0.00</strong></p>
@@ -190,8 +196,7 @@
 					</section>
 
 					<div class="ledger-actions">
-						<button type="submit">Generate Invoice</button>
-						<span class="field-hint">PDF downloads after save</span>
+						<button type="submit">Generate</button>
 					</div>
 				</aside>
 			</form>

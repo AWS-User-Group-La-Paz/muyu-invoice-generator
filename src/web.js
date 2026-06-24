@@ -165,7 +165,14 @@ app.get("/download/:id", async (req, res) => {
 
 app.post("/generate", async (req, res) => {
 	try {
-		const { companyName, companyDetails, taxRate, expenses } = req.body;
+		const {
+			companyName,
+			companyDetails,
+			customerName,
+			customerDetails,
+			taxRate,
+			expenses,
+		} = req.body;
 		const userEmail = req.cookies.user_email;
 
 		if (!expenses) {
@@ -183,6 +190,8 @@ app.post("/generate", async (req, res) => {
 		const invoice = await saveInvoice({
 			companyName,
 			companyDetails,
+			customerName,
+			customerDetails,
 			owner_email: userEmail,
 			...invoiceData,
 		});
