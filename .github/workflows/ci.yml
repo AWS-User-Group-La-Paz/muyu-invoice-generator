@@ -66,29 +66,13 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '0'
 
-      - name: Prepare Trivy filesystem comment
-        if: always() && github.event_name == 'pull_request'
-        run: |
-          echo "## Trivy filesystem scan" > trivy-fs-comment.txt
-          echo >> trivy-fs-comment.txt
-          echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> trivy-fs-comment.txt
-          echo >> trivy-fs-comment.txt
-          if [ ! -f trivy-fs.txt ]; then
-            echo "Filesystem scan did not produce a report." >> trivy-fs-comment.txt
-          elif grep -Eq ' (HIGH|CRITICAL) ' trivy-fs.txt; then
-            echo '```' >> trivy-fs-comment.txt
-            cat trivy-fs.txt >> trivy-fs-comment.txt
-            echo '```' >> trivy-fs-comment.txt
-          else
-            echo "No HIGH or CRITICAL vulnerabilities found." >> trivy-fs-comment.txt
-          fi
-
-      - name: Comment Trivy filesystem scan
-        if: always() && github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v3.0.4
+      - name: Upload Trivy filesystem scan
+        if: always()
+        uses: actions/upload-artifact@v6.0.0
         with:
-          header: trivy-fs-scan
-          path: trivy-fs-comment.txt
+          name: trivy-fs
+          path: trivy-fs.txt
+          if-no-files-found: ignore
 
   build-image:
     name: Build image
@@ -123,30 +107,13 @@ jobs:
           hide-progress: true
           exit-code: '0'
 
-      - name: Prepare Trivy image comment
-        if: always() && github.event_name == 'pull_request'
-        run: |
-          echo "## Trivy image scan" > trivy-image-comment.txt
-          echo >> trivy-image-comment.txt
-          echo "Image tag: \`muyu-invoice-generator:${{ github.sha }}\`" >> trivy-image-comment.txt
-          echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> trivy-image-comment.txt
-          echo >> trivy-image-comment.txt
-          if [ ! -f trivy-image.txt ]; then
-            echo "Image scan did not produce a report." >> trivy-image-comment.txt
-          elif grep -Eq ' (HIGH|CRITICAL) ' trivy-image.txt; then
-            echo '```' >> trivy-image-comment.txt
-            cat trivy-image.txt >> trivy-image-comment.txt
-            echo '```' >> trivy-image-comment.txt
-          else
-            echo "No HIGH or CRITICAL vulnerabilities found." >> trivy-image-comment.txt
-          fi
-
-      - name: Comment Trivy image scan
-        if: always() && github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v3.0.4
+      - name: Upload Trivy image scan
+        if: always()
+        uses: actions/upload-artifact@v6.0.0
         with:
-          header: trivy-image-scan
-          path: trivy-image-comment.txt
+          name: trivy-image
+          path: trivy-image.txt
+          if-no-files-found: ignore
 
       - name: Comment Docker build result
         if: always() && github.event_name == 'pull_request'
@@ -160,13 +127,88 @@ jobs:
             Image tag: `muyu-invoice-generator:${{ github.sha }}`
             Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
+  security-report:
+    name: Security report
+    runs-on: ubuntu-24.04
+    needs: [lint-and-test, build-image]
+    if: always()
+
+    steps:
+      - name: Download Trivy filesystem scan
+        uses: actions/download-artifact@v6.0.0
+        with:
+          name: trivy-fs
+          path: trivy-fs
+        continue-on-error: true
+
+      - name: Download Trivy image scan
+        uses: actions/download-artifact@v6.0.0
+        with:
+          name: trivy-image
+          path: trivy-image
+        continue-on-error: true
+
+      - name: Prepare Trivy comments
+        run: |
+          {
+            echo "## Trivy filesystem scan"
+            echo
+            echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            if [ ! -f trivy-fs/trivy-fs.txt ]; then
+              echo "Filesystem scan did not produce a report."
+            elif grep -Eq ' (HIGH|CRITICAL) ' trivy-fs/trivy-fs.txt; then
+              echo '```'
+              cat trivy-fs/trivy-fs.txt
+              echo '```'
+            else
+              echo "No HIGH or CRITICAL vulnerabilities found."
+            fi
+          } > trivy-fs-comment.txt
+
+          {
+            echo "## Trivy image scan"
+            echo
+            echo "Image tag: \`muyu-invoice-generator:${{ github.sha }}\`"
+            echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            if [ ! -f trivy-image/trivy-image.txt ]; then
+              echo "Image scan did not produce a report."
+            elif grep -Eq ' (HIGH|CRITICAL) ' trivy-image/trivy-image.txt; then
+              echo '```'
+              cat trivy-image/trivy-image.txt
+              echo '```'
+            else
+              echo "No HIGH or CRITICAL vulnerabilities found."
+            fi
+          } > trivy-image-comment.txt
+
+      - name: Comment Trivy filesystem scan
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v3.0.4
+        with:
+          header: trivy-fs-scan
+          path: trivy-fs-comment.txt
+
+      - name: Comment Trivy image scan
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v3.0.4
+        with:
+          header: trivy-image-scan
+          path: trivy-image-comment.txt
+
+      - name: Fail on Trivy vulnerabilities
+        run: |
+          ! { grep -Eq ' (HIGH|CRITICAL) ' trivy-fs/trivy-fs.txt 2>/dev/null || grep -Eq ' (HIGH|CRITICAL) ' trivy-image/trivy-image.txt 2>/dev/null; }
+
   ci-complete:
     name: CI complete
     runs-on: ubuntu-24.04
-    needs: [lint-and-test, build-image]
+    needs: [lint-and-test, build-image, security-report]
     if: always()
     steps:
       - name: Check results
         run: |
           test "${{ needs.lint-and-test.result }}" = "success"
           test "${{ needs.build-image.result }}" = "success"
+          test "${{ needs.security-report.result }}" = "success"
