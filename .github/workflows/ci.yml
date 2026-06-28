@@ -121,7 +121,7 @@ jobs:
         with:
           header: docker-image-build
           message: |
-            ## Docker image build
+            ## ${{ steps.docker-build.outcome == 'success' && '✅' || '🔴' }} Docker image build
 
             Result: `${{ steps.docker-build.outcome }}`
             Image tag: `muyu-invoice-generator:${{ github.sha }}`
@@ -151,36 +151,38 @@ jobs:
       - name: Prepare Trivy comments
         run: |
           {
-            echo "## Trivy filesystem scan"
+            icon="🔴"
+            if [ ! -f trivy-fs/trivy-fs.txt ]; then
+              body="Filesystem scan did not produce a report."
+            elif grep -Eq ' (HIGH|CRITICAL) ' trivy-fs/trivy-fs.txt; then
+              body="$(printf '```\n%s\n```' "$(cat trivy-fs/trivy-fs.txt)")"
+            else
+              icon="✅"
+              body="No HIGH or CRITICAL vulnerabilities found."
+            fi
+            echo "## $icon Trivy filesystem scan"
             echo
             echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo
-            if [ ! -f trivy-fs/trivy-fs.txt ]; then
-              echo "Filesystem scan did not produce a report."
-            elif grep -Eq ' (HIGH|CRITICAL) ' trivy-fs/trivy-fs.txt; then
-              echo '```'
-              cat trivy-fs/trivy-fs.txt
-              echo '```'
-            else
-              echo "No HIGH or CRITICAL vulnerabilities found."
-            fi
+            echo "$body"
           } > trivy-fs-comment.txt
 
           {
-            echo "## Trivy image scan"
+            icon="🔴"
+            if [ ! -f trivy-image/trivy-image.txt ]; then
+              body="Image scan did not produce a report."
+            elif grep -Eq ' (HIGH|CRITICAL) ' trivy-image/trivy-image.txt; then
+              body="$(printf '```\n%s\n```' "$(cat trivy-image/trivy-image.txt)")"
+            else
+              icon="✅"
+              body="No HIGH or CRITICAL vulnerabilities found."
+            fi
+            echo "## $icon Trivy image scan"
             echo
             echo "Image tag: \`muyu-invoice-generator:${{ github.sha }}\`"
             echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo
-            if [ ! -f trivy-image/trivy-image.txt ]; then
-              echo "Image scan did not produce a report."
-            elif grep -Eq ' (HIGH|CRITICAL) ' trivy-image/trivy-image.txt; then
-              echo '```'
-              cat trivy-image/trivy-image.txt
-              echo '```'
-            else
-              echo "No HIGH or CRITICAL vulnerabilities found."
-            fi
+            echo "$body"
           } > trivy-image-comment.txt
 
       - name: Comment Trivy filesystem scan
