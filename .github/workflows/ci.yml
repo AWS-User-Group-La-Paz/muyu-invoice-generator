@@ -11,8 +11,12 @@ permissions:
   issues: write
   pull-requests: write
 
+env:
+  TRIVY_DISABLE_VEX_NOTICE: true
+
 jobs:
   lint-and-test:
+    name: Lint and test
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -62,14 +66,27 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '0'
 
-      - name: Upload Trivy filesystem scan
-        uses: actions/upload-artifact@v6.0.0
+      - name: Prepare Trivy filesystem comment
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          echo "## Trivy filesystem scan" > trivy-fs-comment.txt
+          echo >> trivy-fs-comment.txt
+          echo "Severity: \`HIGH,CRITICAL\`" >> trivy-fs-comment.txt
+          echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> trivy-fs-comment.txt
+          echo >> trivy-fs-comment.txt
+          echo '```' >> trivy-fs-comment.txt
+          cat trivy-fs.txt >> trivy-fs-comment.txt || echo "Filesystem scan did not produce a report." >> trivy-fs-comment.txt
+          echo '```' >> trivy-fs-comment.txt
+
+      - name: Comment Trivy filesystem scan
+        if: always() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v3.0.4
         with:
-          name: trivy-fs
-          path: trivy-fs.txt
-          if-no-files-found: ignore
+          header: trivy-fs-scan
+          path: trivy-fs-comment.txt
 
   build-image:
+    name: Build image
     runs-on: ubuntu-24.04
 
     steps:
@@ -99,13 +116,25 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '0'
 
-      - name: Upload Trivy image scan
-        if: always()
-        uses: actions/upload-artifact@v6.0.0
+      - name: Prepare Trivy image comment
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          echo "## Trivy image scan" > trivy-image-comment.txt
+          echo >> trivy-image-comment.txt
+          echo "Image tag: \`muyu-invoice-generator:${{ github.sha }}\`" >> trivy-image-comment.txt
+          echo "Severity: \`HIGH,CRITICAL\`" >> trivy-image-comment.txt
+          echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> trivy-image-comment.txt
+          echo >> trivy-image-comment.txt
+          echo '```' >> trivy-image-comment.txt
+          cat trivy-image.txt >> trivy-image-comment.txt || echo "Image scan did not produce a report." >> trivy-image-comment.txt
+          echo '```' >> trivy-image-comment.txt
+
+      - name: Comment Trivy image scan
+        if: always() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v3.0.4
         with:
-          name: trivy-image
-          path: trivy-image.txt
-          if-no-files-found: ignore
+          header: trivy-image-scan
+          path: trivy-image-comment.txt
 
       - name: Comment Docker build result
         if: always() && github.event_name == 'pull_request'
@@ -119,77 +148,10 @@ jobs:
             Image tag: `muyu-invoice-generator:${{ github.sha }}`
             Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-  security-report:
-    runs-on: ubuntu-24.04
-    needs: [lint-and-test, build-image]
-    if: always() && github.event_name == 'pull_request'
-
-    steps:
-      - name: Download Trivy filesystem scan
-        uses: actions/download-artifact@v6.0.0
-        with:
-          name: trivy-fs
-          path: trivy-fs
-        continue-on-error: true
-
-      - name: Download Trivy image scan
-        uses: actions/download-artifact@v6.0.0
-        with:
-          name: trivy-image
-          path: trivy-image
-        continue-on-error: true
-
-      - name: Prepare Trivy comments
-        run: |
-          {
-            echo "## Trivy filesystem scan"
-            echo
-            echo "Result: \`${{ needs.lint-and-test.result }}\`"
-            echo "Severity: \`HIGH,CRITICAL\`"
-            echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo
-            echo '```'
-            if [ -f trivy-fs/trivy-fs.txt ]; then
-              cat trivy-fs/trivy-fs.txt
-            else
-              echo "Filesystem scan did not produce a report."
-            fi
-            echo '```'
-          } > fs-comment.txt
-
-          {
-            echo "## Trivy image scan"
-            echo
-            echo "Result: \`${{ needs.build-image.result }}\`"
-            echo "Image tag: \`muyu-invoice-generator:${{ github.sha }}\`"
-            echo "Severity: \`HIGH,CRITICAL\`"
-            echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo
-            echo '```'
-            if [ -f trivy-image/trivy-image.txt ]; then
-              cat trivy-image/trivy-image.txt
-            else
-              echo "Image scan did not produce a report."
-            fi
-            echo '```'
-          } > image-comment.txt
-
-      - name: Comment Trivy filesystem scan
-        uses: marocchino/sticky-pull-request-comment@v3.0.4
-        with:
-          header: trivy-fs-scan
-          path: fs-comment.txt
-
-      - name: Comment Trivy image scan
-        uses: marocchino/sticky-pull-request-comment@v3.0.4
-        with:
-          header: trivy-image-scan
-          path: image-comment.txt
-
   ci-complete:
     name: CI complete
     runs-on: ubuntu-24.04
-    needs: [lint-and-test, build-image, security-report]
+    needs: [lint-and-test, build-image]
     if: always()
     steps:
       - name: Check results
