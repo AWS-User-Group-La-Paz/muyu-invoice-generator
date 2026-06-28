@@ -1,0 +1,17 @@
+.git
+.github
+node_modules
+coverage
+
+provisioning/
+scripts/
+tests/
+
+.gitignore
+*.md
+docker-compose.yml
+mise.toml
+
+.env
+.env.*
+npm-debug.log*
