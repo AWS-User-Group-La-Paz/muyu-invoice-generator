@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   issues: write
+  pull-requests: write
 
 jobs:
   lint-and-test:
@@ -80,3 +81,14 @@ jobs:
             Result: `${{ steps.docker-build.outcome }}`
             Image tag: `muyu-invoice-generator:${{ github.sha }}`
             Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  ci-complete:
+    name: CI complete
+    runs-on: ubuntu-24.04
+    needs: [lint-and-test, build-image]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          test "${{ needs.lint-and-test.result }}" = "success"
+          test "${{ needs.build-image.result }}" = "success"
