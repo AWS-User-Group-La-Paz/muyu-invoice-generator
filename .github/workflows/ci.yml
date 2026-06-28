@@ -71,12 +71,17 @@ jobs:
         run: |
           echo "## Trivy filesystem scan" > trivy-fs-comment.txt
           echo >> trivy-fs-comment.txt
-          echo "Severity: \`HIGH,CRITICAL\`" >> trivy-fs-comment.txt
           echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> trivy-fs-comment.txt
           echo >> trivy-fs-comment.txt
-          echo '```' >> trivy-fs-comment.txt
-          cat trivy-fs.txt >> trivy-fs-comment.txt || echo "Filesystem scan did not produce a report." >> trivy-fs-comment.txt
-          echo '```' >> trivy-fs-comment.txt
+          if [ ! -f trivy-fs.txt ]; then
+            echo "Filesystem scan did not produce a report." >> trivy-fs-comment.txt
+          elif grep -Eq ' (HIGH|CRITICAL) ' trivy-fs.txt; then
+            echo '```' >> trivy-fs-comment.txt
+            cat trivy-fs.txt >> trivy-fs-comment.txt
+            echo '```' >> trivy-fs-comment.txt
+          else
+            echo "No HIGH or CRITICAL vulnerabilities found." >> trivy-fs-comment.txt
+          fi
 
       - name: Comment Trivy filesystem scan
         if: always() && github.event_name == 'pull_request'
@@ -111,9 +116,11 @@ jobs:
         with:
           scan-type: image
           image-ref: muyu-invoice-generator:${{ github.sha }}
+          scanners: vuln
           format: table
           output: trivy-image.txt
           severity: HIGH,CRITICAL
+          hide-progress: true
           exit-code: '0'
 
       - name: Prepare Trivy image comment
@@ -122,12 +129,17 @@ jobs:
           echo "## Trivy image scan" > trivy-image-comment.txt
           echo >> trivy-image-comment.txt
           echo "Image tag: \`muyu-invoice-generator:${{ github.sha }}\`" >> trivy-image-comment.txt
-          echo "Severity: \`HIGH,CRITICAL\`" >> trivy-image-comment.txt
           echo "Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> trivy-image-comment.txt
           echo >> trivy-image-comment.txt
-          echo '```' >> trivy-image-comment.txt
-          cat trivy-image.txt >> trivy-image-comment.txt || echo "Image scan did not produce a report." >> trivy-image-comment.txt
-          echo '```' >> trivy-image-comment.txt
+          if [ ! -f trivy-image.txt ]; then
+            echo "Image scan did not produce a report." >> trivy-image-comment.txt
+          elif grep -Eq ' (HIGH|CRITICAL) ' trivy-image.txt; then
+            echo '```' >> trivy-image-comment.txt
+            cat trivy-image.txt >> trivy-image-comment.txt
+            echo '```' >> trivy-image-comment.txt
+          else
+            echo "No HIGH or CRITICAL vulnerabilities found." >> trivy-image-comment.txt
+          fi
 
       - name: Comment Trivy image scan
         if: always() && github.event_name == 'pull_request'
