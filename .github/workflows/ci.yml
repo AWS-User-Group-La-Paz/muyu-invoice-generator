@@ -1,4 +1,4 @@
-name: Continuous Integration
+name: CI
 
 on:
   push:
@@ -8,9 +8,10 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
-  test:
+  lint-and-test:
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -30,32 +31,52 @@ jobs:
       DATABASE_URL: postgres://invoice_user:invoice_pass@localhost:5432/invoice_test_db
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v7.0.0
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v6.4.0
         with:
           node-version: '24.16.0'
           cache: 'npm'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: Run Linter
+      - name: Run linter
         run: npm run lint
 
-      - name: Run Tests
+      - name: Run tests
         run: npm test
         env:
           NODE_ENV: test
 
+  build-image:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.1.0
 
-      - name: Build Docker Image
+      - name: Build Docker image
+        id: docker-build
         uses: docker/build-push-action@v7.2.0
         with:
           context: .
           push: false
           tags: muyu-invoice-generator:${{ github.sha }}
+
+      - name: Comment Docker build result
+        if: always() && github.event_name == 'pull_request'
+        uses: mshick/add-pr-comment@v2.8.2
+        with:
+          message-id: docker-build
+          message: |
+            ## Docker build
+
+            Status: `${{ steps.docker-build.outcome }}`
+            Image: `muyu-invoice-generator:${{ github.sha }}`
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
