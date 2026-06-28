@@ -13,7 +13,7 @@ Server-rendered Node/Express app for creating invoice PDFs, saving invoice histo
 
 - Node.js 24.16.0
 - Docker and Docker Compose for local PostgreSQL
-- Optional: `mise`, Trivy, Packer, ShellCheck
+- Optional: `mise`, Trivy
 
 ## Setup
 
@@ -79,20 +79,15 @@ npm run test:db
 - `POST /settings` - save company defaults
 - `GET /health` - health check
 
-## Deployment
+## Packaging
 
-Build an AMI:
-
-```bash
-mise exec -- packer build provisioning/ami.pkr.hcl
-```
-
-Deploy on the instance:
+Build the Docker image:
 
 ```bash
-cd /opt/muyu-invoice-generator
-sudo ./scripts/deploy.sh
+docker build -t muyu-invoice-generator:local .
 ```
+
+Set `DATABASE_URL` at runtime.
 
 ## Project Structure
 

@@ -1,7 +1,6 @@
 [tools]
 node = "24.16.0"
 trivy = "0.71.0"
-packer = "1.10.3"
 
 [env]
 DATABASE_URL = "postgres://invoice_user:invoice_pass@localhost:5432/invoice_db"
