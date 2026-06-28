@@ -8,7 +8,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
+  issues: write
 
 jobs:
   lint-and-test:
@@ -71,12 +71,13 @@ jobs:
 
       - name: Comment Docker build result
         if: always() && github.event_name == 'pull_request'
-        uses: mshick/add-pr-comment@v2.8.2
-        with:
-          message-id: docker-build
-          message: |
-            ## Docker build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "## Docker image build
 
-            Status: `${{ steps.docker-build.outcome }}`
-            Image: `muyu-invoice-generator:${{ github.sha }}`
-            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          Result: \`${{ steps.docker-build.outcome }}\`
+          Image tag: \`muyu-invoice-generator:${{ github.sha }}\`
+          Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
