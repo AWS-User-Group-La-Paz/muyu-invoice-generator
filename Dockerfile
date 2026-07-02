@@ -1,45 +1,31 @@
-# Hardened Node 24 Alpine image with npm for dependency install.
-FROM dhi.io/node:24-alpine-dev AS deps
+# Use the Node version from mise.toml on Debian slim.
+FROM node:24.16.0-bookworm-slim
 
-# Enables production behavior in Node dependencies.
+# Enable production behavior.
 ENV NODE_ENV=production
 
-# All following commands run from /app.
+# Run following commands from /app.
 WORKDIR /app
 
-# Copy dependency manifests first for better Docker layer caching.
+# Copy dependency files first for build caching.
 COPY package.json package-lock.json ./
 
-# Install locked production dependencies.
-RUN ["npm", "ci", "--omit=dev"]
+# Install production dependencies and remove the npm cache.
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Remove npm cache without requiring a shell.
-RUN ["npm", "cache", "clean", "--force"]
+# Copy the application files.
+COPY . .
 
-# Hardened Node 24 Alpine runtime image.
-FROM dhi.io/node:24-alpine3.23
-
-# Enables production behavior in Node dependencies.
-ENV NODE_ENV=production
-
-# All following commands run from /app.
-WORKDIR /app
-
-# Copy installed production dependencies from the build stage.
-COPY --from=deps --chown=node:node /app/node_modules ./node_modules
-
-# Copy app files and make the non-root user own them.
-COPY --chown=node:node . .
-
-# Run the app without root privileges.
+# Run the application as a non-root user.
 USER node
 
-# Documents the port the app listens on.
+# Document the application port.
 EXPOSE 3000
 
-# Checks the existing /health endpoint without requiring a shell.
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+# Check that the application responds successfully.
+# Use Node to request /health and fail if it is unavailable.
+HEALTHCHECK --timeout=3s --start-period=10s \
+    CMD node -e "fetch('http://127.0.0.1:3000/health').then(response => { if (!response.ok) process.exit(1) })"
 
-# Starts the server directly, without npm as a wrapper.
+# Start the application.
 CMD ["node", "src/web.js"]
