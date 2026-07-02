@@ -16,7 +16,7 @@ env:
 
 jobs:
   lint-and-test:
-    name: Lint and test
+    name: 1. Lint, test, and scan source
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -75,15 +75,11 @@ jobs:
           if-no-files-found: ignore
 
   build-image:
-    name: Build image
+    name: 2. Build and scan image
     runs-on: ubuntu-24.04
+    needs: lint-and-test
     outputs:
       image_ref: ${{ steps.image.outputs.ref }}
-    permissions:
-      contents: read
-      issues: write
-      packages: write
-      pull-requests: write
 
     steps:
       - name: Checkout repository
@@ -92,14 +88,6 @@ jobs:
       - name: Generate image reference
         id: image
         run: echo "ref=ghcr.io/${GITHUB_REPOSITORY,,}:v$(date -u +%Y.%m.%d)-r${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
-
-      - name: Log in to GitHub Container Registry
-        if: github.event_name == 'push'
-        uses: docker/login-action@v4.1.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.1.0
@@ -133,9 +121,22 @@ jobs:
           path: trivy-image.txt
           if-no-files-found: ignore
 
-      - name: Push Docker image
+      - name: Export Docker image
         if: github.event_name == 'push'
-        run: docker push "${{ steps.image.outputs.ref }}"
+        run: |
+          docker save --output docker-image.tar "${{ steps.image.outputs.ref }}"
+          echo "${{ steps.image.outputs.ref }}" > image-ref.txt
+
+      - name: Upload Docker image
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: docker-image
+          path: |
+            docker-image.tar
+            image-ref.txt
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Comment Docker build result
         if: always() && github.event_name == 'pull_request'
@@ -150,9 +151,9 @@ jobs:
             Details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   security-report:
-    name: Security report
+    name: 3. Security report
     runs-on: ubuntu-24.04
-    needs: [lint-and-test, build-image]
+    needs: build-image
     if: always()
 
     steps:
@@ -221,18 +222,46 @@ jobs:
           header: trivy-image-scan
           path: trivy-image-comment.txt
 
-      - name: Fail on Trivy vulnerabilities
+      - name: Enforce security gate
         run: |
-          ! { grep -Eq ' (HIGH|CRITICAL) ' trivy-fs/trivy-fs.txt 2>/dev/null || grep -Eq ' (HIGH|CRITICAL) ' trivy-image/trivy-image.txt 2>/dev/null; }
+          test "${{ needs.build-image.result }}" = "success"
+          test -f trivy-fs/trivy-fs.txt
+          test -f trivy-image/trivy-image.txt
+          ! { grep -Eq ' (HIGH|CRITICAL) ' trivy-fs/trivy-fs.txt || grep -Eq ' (HIGH|CRITICAL) ' trivy-image/trivy-image.txt; }
+
+  publish-image:
+    name: 4. Publish image (push only)
+    runs-on: ubuntu-24.04
+    needs: security-report
+    permissions:
+      packages: write
+
+    steps:
+      - name: Download Docker image
+        if: github.event_name == 'push'
+        uses: actions/download-artifact@v6.0.0
+        with:
+          name: docker-image
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load and push Docker image
+        if: github.event_name == 'push'
+        run: |
+          docker load --input docker-image.tar
+          docker push "$(cat image-ref.txt)"
 
   ci-complete:
-    name: CI complete
+    name: 5. CI complete
     runs-on: ubuntu-24.04
-    needs: [lint-and-test, build-image, security-report]
+    needs: publish-image
     if: always()
     steps:
-      - name: Check results
-        run: |
-          test "${{ needs.lint-and-test.result }}" = "success"
-          test "${{ needs.build-image.result }}" = "success"
-          test "${{ needs.security-report.result }}" = "success"
+      - name: Check result
+        run: test "${{ needs.publish-image.result }}" = "success"
