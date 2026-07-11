@@ -124,6 +124,11 @@ describe("invoice worker", () => {
 		await worker.processMessage(message({ invoiceId: 7, skipEmail: true }));
 
 		expect(mockSendInvoiceEmail).not.toHaveBeenCalled();
+		expect(logSpy).toHaveBeenCalledWith(
+			expect.stringMatching(
+				/service=worker event=invoice_email_skipped invoiceId=7 messageId=message-7$/,
+			),
+		);
 		expect(mockMarkInvoiceComplete).toHaveBeenCalledWith(7, "invoices/7.pdf");
 		expect(mockDeleteInvoice).toHaveBeenCalledWith("receipt-7");
 	});

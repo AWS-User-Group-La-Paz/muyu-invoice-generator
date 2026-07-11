@@ -114,6 +114,8 @@ async function processMessage(message) {
 				pdfBuffer,
 			});
 			logInfo("invoice_email_sent", invoiceFields(invoiceId, message));
+		} else {
+			logInfo("invoice_email_skipped", invoiceFields(invoiceId, message));
 		}
 		await markInvoiceComplete(invoiceId, pdfKey);
 		logInfo("invoice_completed", invoiceFields(invoiceId, message));
