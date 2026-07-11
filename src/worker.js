@@ -82,7 +82,7 @@ async function processMessage(message) {
 		return;
 	}
 
-	const { invoiceId } = job;
+	const { invoiceId, skipEmail } = job;
 	logInfo("invoice_received", invoiceFields(invoiceId, message));
 	let invoice;
 	try {
@@ -107,12 +107,16 @@ async function processMessage(message) {
 		logInfo("invoice_pdf_generated", invoiceFields(invoiceId, message));
 		const pdfKey = await storePDF(invoiceId, pdfBuffer);
 		logInfo("invoice_pdf_stored", invoiceFields(invoiceId, message));
-		await sendInvoiceEmail({
-			to: invoice.owner_email,
-			invoiceId,
-			pdfBuffer,
-		});
-		logInfo("invoice_email_sent", invoiceFields(invoiceId, message));
+		if (!skipEmail) {
+			await sendInvoiceEmail({
+				to: invoice.owner_email,
+				invoiceId,
+				pdfBuffer,
+			});
+			logInfo("invoice_email_sent", invoiceFields(invoiceId, message));
+		} else {
+			logInfo("invoice_email_skipped", invoiceFields(invoiceId, message));
+		}
 		await markInvoiceComplete(invoiceId, pdfKey);
 		logInfo("invoice_completed", invoiceFields(invoiceId, message));
 		await deleteInvoice(message.ReceiptHandle);

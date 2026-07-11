@@ -14,11 +14,7 @@ const {
 	getProfileByEmail,
 	pool,
 } = require("./services/db");
-const {
-	createInvoiceJob,
-	validateInvoiceJob,
-	enqueueInvoice,
-} = require("./services/queue");
+const { createInvoiceJob, enqueueInvoice } = require("./services/queue");
 const { openPDF } = require("./services/storage");
 
 const app = express();
@@ -268,8 +264,7 @@ app.post("/generate", async (req, res) => {
 	}
 
 	try {
-		const job = createInvoiceJob(invoice);
-		validateInvoiceJob(job);
+		const job = createInvoiceJob(invoice, req.body.skipEmail === "true");
 		const queued = await enqueueInvoice(job);
 		logInfo(
 			"invoice_queued",

@@ -37,11 +37,11 @@ describe("queue service", () => {
 		process.env = originalEnv;
 	});
 
-	test("builds and validates an ID-only invoice job", () => {
+	test("builds and validates an invoice job with an email flag", () => {
 		const { createInvoiceJob, validateInvoiceJob } = loadQueue();
-		const job = createInvoiceJob({ id: 12, company_name: "Ignored" });
+		const job = createInvoiceJob({ id: 12, company_name: "Ignored" }, true);
 
-		expect(job).toEqual({ invoiceId: 12 });
+		expect(job).toEqual({ invoiceId: 12, skipEmail: true });
 		expect(validateInvoiceJob(job)).toEqual(job);
 		expect(() => validateInvoiceJob()).toThrow("positive integer");
 		expect(() => validateInvoiceJob({ invoiceId: 0 })).toThrow(
@@ -50,13 +50,16 @@ describe("queue service", () => {
 		expect(() => validateInvoiceJob({ invoiceId: 1.5 })).toThrow(
 			"positive integer",
 		);
+		expect(() =>
+			validateInvoiceJob({ invoiceId: 12, skipEmail: "true" }),
+		).toThrow("positive integer");
 	});
 
 	test("serializes the job for the fixed local queue", async () => {
 		const { enqueueInvoice } = loadQueue();
 		mockSend.mockResolvedValue({ MessageId: "message-1" });
 
-		await enqueueInvoice({ invoiceId: 12 });
+		await enqueueInvoice({ invoiceId: 12, skipEmail: false });
 
 		expect(mockClient).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -68,7 +71,7 @@ describe("queue service", () => {
 		expect(mockSend.mock.calls[0][0].input).toEqual({
 			QueueUrl:
 				"http://localhost:4566/queue/us-east-1/000000000000/invoice-pdf-jobs",
-			MessageBody: '{"invoiceId":12}',
+			MessageBody: '{"invoiceId":12,"skipEmail":false}',
 		});
 	});
 

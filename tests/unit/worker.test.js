@@ -106,6 +106,33 @@ describe("invoice worker", () => {
 		);
 	});
 
+	test("generates and stores without emailing when requested", async () => {
+		const invoice = {
+			id: 7,
+			owner_email: "author@example.com",
+			status: "processing",
+		};
+		const pdf = Buffer.from("pdf");
+		mockGetInvoiceById.mockResolvedValue(invoice);
+		mockGeneratePDF.mockResolvedValue(pdf);
+		mockStorePDF.mockResolvedValue("invoices/7.pdf");
+		mockMarkInvoiceComplete.mockResolvedValue({
+			...invoice,
+			status: "complete",
+		});
+
+		await worker.processMessage(message({ invoiceId: 7, skipEmail: true }));
+
+		expect(mockSendInvoiceEmail).not.toHaveBeenCalled();
+		expect(logSpy).toHaveBeenCalledWith(
+			expect.stringMatching(
+				/service=worker event=invoice_email_skipped invoiceId=7 messageId=message-7$/,
+			),
+		);
+		expect(mockMarkInvoiceComplete).toHaveBeenCalledWith(7, "invoices/7.pdf");
+		expect(mockDeleteInvoice).toHaveBeenCalledWith("receipt-7");
+	});
+
 	test("marks a processing failure as failed before deleting", async () => {
 		mockGetInvoiceById.mockResolvedValue({ id: 7, status: "processing" });
 		mockGeneratePDF.mockRejectedValue(new Error("render failed"));
