@@ -1,13 +1,9 @@
 module.exports = {
 	testEnvironment: "node",
-	setupFiles: ["<rootDir>/tests/setup.js"],
 	collectCoverage: true,
 	coverageDirectory: "coverage",
 	coverageReporters: ["text", "lcov", "clover"],
-	collectCoverageFrom: [
-		"src/**/*.js",
-		"!src/services/db.js", // We will mock this specifically
-	],
+	collectCoverageFrom: ["src/**/*.js"],
 	coverageThreshold: {
 		global: {
 			statements: 80,

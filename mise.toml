@@ -3,6 +3,7 @@ node = "24.16.0"
 trivy = "0.71.0"
 
 [env]
+NODE_ENV = "development"
 DATABASE_URL = "postgres://invoice_user:invoice_pass@localhost:5432/invoice_db"
 PORT = "3000"
 
@@ -14,13 +15,17 @@ run = "npm start"
 description = "Start the application with Node watch mode"
 run = "npm run dev"
 
+[tasks.worker]
+description = "Start the invoice worker"
+run = "npm run worker"
+
+[tasks.dev-worker]
+description = "Start the invoice worker with Node watch mode"
+run = "npm run dev:worker"
+
 [tasks.test]
 description = "Run all tests and generate coverage report"
 run = "npm test"
-
-[tasks.test-db]
-description = "Start test database and run tests"
-run = "npm run test:db"
 
 [tasks.lint]
 description = "Check for linting errors and formatting issues using Biome"
@@ -33,3 +38,27 @@ run = "npm run format"
 [tasks.scan-dependencies]
 description = "Scan dependencies for vulnerabilities using Trivy"
 run = "trivy fs ."
+
+[tasks.local-up]
+description = "Start local PostgreSQL, SQS, and email services"
+run = "docker compose up -d --wait db localstack mailpit"
+
+[tasks.queue-create]
+description = "Create the local invoice queue"
+depends = ["local-up"]
+run = "docker compose exec -T localstack awslocal sqs create-queue --queue-name invoice-pdf-jobs"
+
+[tasks.local-setup]
+description = "Start local services and create the queue"
+depends = ["queue-create"]
+
+[tasks.local-down]
+description = "Stop local services"
+run = "docker compose down"
+
+[tasks.local-reset]
+description = "Destroy and recreate local services"
+run = """
+docker compose down -v
+mise run local-setup
+"""

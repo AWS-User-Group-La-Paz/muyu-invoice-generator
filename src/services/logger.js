@@ -1,24 +1,23 @@
 const morgan = require("morgan");
 
-morgan.token(
-	"real-ip",
-	/* istanbul ignore next */ (req) => {
-		return req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress;
-	},
-);
+const quoted = (value) => JSON.stringify(String(value));
+const logLine = (service, level, event, details = "") =>
+	`[${new Date().toISOString()}] level=${level} service=${service} event=${event}${details ? ` ${details}` : ""}`;
 
 const httpLogger = morgan((tokens, req, res) => {
-	return [
-		`[${new Date().toISOString()}]`,
-		tokens.method(req, res),
-		tokens.url(req, res),
-		tokens.status(req, res),
-		`(${tokens["response-time"](req, res)} ms)`,
-		"- IP:",
-		tokens["real-ip"](req, res),
-		"- UA:",
-		tokens["user-agent"](req, res),
-	].join(" ");
+	return logLine(
+		"web",
+		"info",
+		"http_request",
+		[
+			`method=${tokens.method(req, res)}`,
+			`path=${quoted(tokens.url(req, res))}`,
+			`status=${tokens.status(req, res)}`,
+			`durationMs=${tokens["response-time"](req, res)}`,
+			`ip=${quoted(tokens["remote-addr"](req, res) || "")}`,
+			`ua=${quoted(tokens["user-agent"](req, res) || "")}`,
+		].join(" "),
+	);
 });
 
-module.exports = { httpLogger };
+module.exports = { httpLogger, logLine, quoted };

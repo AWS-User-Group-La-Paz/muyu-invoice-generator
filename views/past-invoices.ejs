@@ -44,6 +44,7 @@
 									<th id="invoice-date">Date</th>
 									<th id="invoice-company">Company</th>
 									<th id="invoice-total" class="number">Total</th>
+									<th id="invoice-status">Status</th>
 									<th id="invoice-action"><span class="sr-only">Action</span></th>
 								</tr>
 							</thead>
@@ -53,7 +54,8 @@
 										<td headers="invoice-date"><span class="cell-label" aria-hidden="true">Date</span><span><%= new Date(invoice.created_at).toLocaleDateString() %></span></td>
 										<td headers="invoice-company"><span class="cell-label" aria-hidden="true">Company</span><span><%= invoice.company_name %></span></td>
 										<td headers="invoice-total" class="number"><span class="cell-label" aria-hidden="true">Total</span><span>$<%= parseFloat(invoice.total).toFixed(2) %></span></td>
-										<td headers="invoice-action"><span class="cell-label" aria-hidden="true">Action</span><a class="button secondary" href="/download/<%= invoice.id %>">Download</a></td>
+										<td headers="invoice-status"><span class="cell-label" aria-hidden="true">Status</span><span class="status status-<%= invoice.status %>"><%= invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1) %></span></td>
+										<td headers="invoice-action"><span class="cell-label" aria-hidden="true">Action</span><% if (invoice.status === "complete") { %><a class="button secondary" href="/download/<%= invoice.id %>">Download</a><% } %></td>
 									</tr>
 								<% }) %>
 							</tbody>

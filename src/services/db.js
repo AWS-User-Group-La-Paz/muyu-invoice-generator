@@ -1,11 +1,14 @@
 const { Pool } = require("pg");
+const { logLine, quoted } = require("./logger");
 
 const pool = new Pool({
 	connectionString: process.env.DATABASE_URL,
 });
 
 pool.on("error", (err) => {
-	console.error("Unexpected error on idle database client", err);
+	console.error(
+		logLine("db", "error", "idle_client_error", `error=${quoted(err.message)}`),
+	);
 });
 
 async function query(text, params = []) {
@@ -14,30 +17,24 @@ async function query(text, params = []) {
 
 async function initDB() {
 	await query(`
-	    CREATE TABLE IF NOT EXISTS invoices (
-	      id SERIAL PRIMARY KEY,
-	      company_name TEXT NOT NULL,
-	      company_details TEXT,
-	      customer_name TEXT,
-	      customer_details TEXT,
-	      owner_email TEXT,
-	      tax_rate NUMERIC,
-	      subtotal NUMERIC,
-	      total NUMERIC,
-	      items JSONB,
-	      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-	    );
-	  `);
+		CREATE TABLE IF NOT EXISTS invoices (
+			id SERIAL PRIMARY KEY,
+			company_name TEXT NOT NULL,
+			company_details TEXT,
+			customer_name TEXT,
+			customer_details TEXT,
+			owner_email TEXT NOT NULL,
+			tax_rate NUMERIC NOT NULL,
+			subtotal NUMERIC NOT NULL,
+			total NUMERIC NOT NULL,
+			items JSONB NOT NULL,
+			status TEXT NOT NULL DEFAULT 'processing'
+				CHECK (status IN ('processing', 'complete', 'failed')),
+			pdf_key TEXT,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+	`);
 
-	await query(
-		`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS owner_email TEXT;`,
-	);
-	await query(
-		`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_name TEXT;`,
-	);
-	await query(
-		`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_details TEXT;`,
-	);
 	await query(
 		`CREATE INDEX IF NOT EXISTS idx_invoices_owner ON invoices(owner_email);`,
 	);
@@ -52,7 +49,7 @@ async function initDB() {
     );
   `);
 
-	console.log("Database initialized");
+	console.log(logLine("db", "info", "database_initialized"));
 }
 
 async function saveInvoice(invoiceData) {
@@ -99,6 +96,22 @@ async function getInvoiceById(id) {
 	return result.rows[0];
 }
 
+async function markInvoiceComplete(id, pdfKey) {
+	const result = await query(
+		"UPDATE invoices SET status = 'complete', pdf_key = $2 WHERE id = $1 AND status = 'processing' RETURNING *",
+		[id, pdfKey],
+	);
+	return result.rows[0];
+}
+
+async function markInvoiceFailed(id) {
+	const result = await query(
+		"UPDATE invoices SET status = 'failed' WHERE id = $1 AND status = 'processing' RETURNING *",
+		[id],
+	);
+	return result.rows[0];
+}
+
 async function upsertProfile(profileData) {
 	const { email, company_name, company_details, default_tax_rate } =
 		profileData;
@@ -131,6 +144,8 @@ module.exports = {
 	saveInvoice,
 	getInvoicesByOwner,
 	getInvoiceById,
+	markInvoiceComplete,
+	markInvoiceFailed,
 	upsertProfile,
 	getProfileByEmail,
 };

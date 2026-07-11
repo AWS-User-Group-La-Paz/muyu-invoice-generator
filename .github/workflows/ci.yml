@@ -18,22 +18,6 @@ jobs:
   lint-and-test:
     name: 1. Lint, test, and scan source
     runs-on: ubuntu-24.04
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: invoice_user
-          POSTGRES_PASSWORD: invoice_pass
-          POSTGRES_DB: invoice_test_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U invoice_user -d invoice_test_db"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      DATABASE_URL: postgres://invoice_user:invoice_pass@localhost:5432/invoice_test_db
 
     steps:
       - name: Checkout repository

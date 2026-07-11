@@ -6,16 +6,21 @@
 	"scripts": {
 		"start": "node src/web.js",
 		"dev": "node --watch src/web.js",
+		"worker": "node src/worker.js",
+		"dev:worker": "node --watch src/worker.js",
 		"test": "jest --coverage",
-		"test:db": "docker compose up -d db_test && jest --coverage",
 		"lint": "biome check .",
 		"format": "biome check --write ."
 	},
 	"dependencies": {
+		"@aws-sdk/client-s3": "^3.1083.0",
+		"@aws-sdk/client-sesv2": "^3.1083.0",
+		"@aws-sdk/client-sqs": "^3.1083.0",
 		"cookie-parser": "^1.4.7",
 		"ejs": "3.1.10",
 		"express": "4.22.1",
 		"morgan": "1.11.0",
+		"nodemailer": "^9.0.3",
 		"pdfkit": "0.15.0",
 		"pg": "8.11.5"
 	},

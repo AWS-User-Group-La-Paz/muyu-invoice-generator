@@ -32,6 +32,9 @@
 				taxRate: profile.taxRate || "",
 				expenses: [{ id: 1, description: "", cost: "" }],
 				nextId: 2,
+				submitting: false,
+				showGenerationModal: false,
+				generationError: "",
 				addExpense() {
 					this.expenses.push({ id: this.nextId++, description: "", cost: "" });
 				},
@@ -48,6 +51,24 @@
 				},
 				get total() {
 					return this.subtotal + this.taxAmount;
+				},
+				async submitInvoice(event) {
+					if (this.submitting || !event.target.reportValidity()) return;
+					this.submitting = true;
+					this.generationError = "";
+					try {
+						const response = await fetch(event.target.action, {
+							method: "POST",
+							headers: { "Content-Type": "application/x-www-form-urlencoded" },
+							body: new URLSearchParams(new FormData(event.target)),
+						});
+						if (response.status !== 202) throw new Error("Request failed");
+						this.showGenerationModal = true;
+					} catch (_error) {
+						this.generationError = "We could not queue your invoice. Please try again.";
+					} finally {
+						this.submitting = false;
+					}
 				},
 			};
 		}
@@ -101,6 +122,22 @@
 			taxRate: profile ? profile.default_tax_rate : ""
 		}) %>)'
 	>
+		<dialog
+			id="generation-modal"
+			class="modal"
+			aria-labelledby="generation-modal-title"
+			aria-describedby="generation-modal-description"
+			x-effect="showGenerationModal && !$el.open ? $el.showModal() : (!showGenerationModal && $el.open ? $el.close() : null)"
+			@cancel.prevent="showGenerationModal = false"
+			x-cloak
+		>
+			<div class="dialog">
+				<h1 id="generation-modal-title">Your PDF is being generated.</h1>
+				<p id="generation-modal-description">It will be sent to your inbox shortly.</p>
+				<button type="button" @click="showGenerationModal = false">Close</button>
+			</div>
+		</dialog>
+
 		<aside class="sidebar">
 			<header>
 				Muyu: Invoice Generator
@@ -123,7 +160,7 @@
 				</div>
 			</section>
 
-			<form class="workspace-grid" action="/generate" method="POST">
+			<form class="workspace-grid" action="/generate" method="POST" @submit.prevent="submitInvoice($event)">
 				<div class="form-stack">
 					<fieldset class="panel">
 						<legend>Business</legend>
@@ -196,7 +233,8 @@
 					</section>
 
 					<div class="ledger-actions">
-						<button type="submit">Generate</button>
+						<p class="form-error" role="alert" x-show="generationError" x-text="generationError" x-cloak></p>
+						<button type="submit" :disabled="submitting" x-text="submitting ? 'Generating…' : 'Generate'">Generate</button>
 					</div>
 				</aside>
 			</form>

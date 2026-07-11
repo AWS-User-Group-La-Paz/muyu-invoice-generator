@@ -30,6 +30,7 @@ coverage/
 
 # Output
 *.pdf
+tmp/pdfs/
 
 # IDE
 .vscode/
