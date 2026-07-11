@@ -3,7 +3,6 @@ node = "24.16.0"
 trivy = "0.71.0"
 
 [env]
-NODE_ENV = "development"
 DATABASE_URL = "postgres://invoice_user:invoice_pass@localhost:5432/invoice_db"
 PORT = "3000"
 
@@ -26,6 +25,9 @@ run = "npm run dev:worker"
 [tasks.test]
 description = "Run all tests and generate coverage report"
 run = "npm test"
+
+[tasks.test.env]
+NODE_ENV = "test"
 
 [tasks.lint]
 description = "Check for linting errors and formatting issues using Biome"
