@@ -16,7 +16,6 @@ const {
 } = require("../../src/services/db");
 const {
 	createInvoiceJob,
-	validateInvoiceJob,
 	enqueueInvoice,
 } = require("../../src/services/queue");
 const { openPDF } = require("../../src/services/storage");
@@ -36,10 +35,10 @@ describe("web routes", () => {
 		jest.clearAllMocks();
 		getProfileByEmail.mockResolvedValue(null);
 		getInvoicesByOwner.mockResolvedValue([]);
-		createInvoiceJob.mockImplementation((invoice) => ({
+		createInvoiceJob.mockImplementation((invoice, skipEmail) => ({
 			invoiceId: invoice.id,
+			skipEmail,
 		}));
-		validateInvoiceJob.mockImplementation((job) => job);
 		enqueueInvoice.mockResolvedValue();
 		markInvoiceFailed.mockResolvedValue({ id: 1, status: "failed" });
 	});
@@ -121,7 +120,7 @@ describe("web routes", () => {
 		expect(saveInvoice).not.toHaveBeenCalled();
 	});
 
-	test("saves Processing, enqueues an ID-only job, and returns 202", async () => {
+	test("saves Processing, enqueues a PDF-only job, and returns 202", async () => {
 		const invoice = { id: 1, status: "processing" };
 		saveInvoice.mockResolvedValue(invoice);
 		enqueueInvoice.mockResolvedValue({ MessageId: "message-1" });
@@ -131,16 +130,18 @@ describe("web routes", () => {
 			.post("/generate")
 			.set("Cookie", ["user_email=user@example.com"])
 			.type("form")
-			.send(validInvoice);
+			.send({ ...validInvoice, skipEmail: "true" });
 
 		expect(response.status).toBe(202);
 		expect(response.body).toEqual({ id: 1, status: "processing" });
 		expect(saveInvoice).toHaveBeenCalledWith(
 			expect.objectContaining({ owner_email: "user@example.com" }),
 		);
-		expect(createInvoiceJob).toHaveBeenCalledWith(invoice);
-		expect(validateInvoiceJob).toHaveBeenCalledWith({ invoiceId: 1 });
-		expect(enqueueInvoice).toHaveBeenCalledWith({ invoiceId: 1 });
+		expect(createInvoiceJob).toHaveBeenCalledWith(invoice, true);
+		expect(enqueueInvoice).toHaveBeenCalledWith({
+			invoiceId: 1,
+			skipEmail: true,
+		});
 		expect(generatePDF).not.toHaveBeenCalled();
 		expect(logSpy).toHaveBeenCalledWith(
 			expect.stringMatching(

@@ -25,18 +25,20 @@ function validateInvoiceJob(job) {
 		!job ||
 		!Number.isInteger(job.invoiceId) ||
 		job.invoiceId <= 0 ||
-		Object.keys(job).length !== 1
+		(job.skipEmail !== undefined && typeof job.skipEmail !== "boolean") ||
+		Object.keys(job).some((key) => key !== "invoiceId" && key !== "skipEmail")
 	) {
 		throw new TypeError(
-			"Invoice job requires only a positive integer invoiceId",
+			"Invoice job requires a positive integer invoiceId and optional boolean skipEmail",
 		);
 	}
 	return job;
 }
 
-function createInvoiceJob(invoice) {
-	return validateInvoiceJob({ invoiceId: invoice.id });
-}
+const createInvoiceJob = (invoice, skipEmail = false) => ({
+	invoiceId: invoice.id,
+	skipEmail,
+});
 
 async function enqueueInvoice(job) {
 	validateInvoiceJob(job);
