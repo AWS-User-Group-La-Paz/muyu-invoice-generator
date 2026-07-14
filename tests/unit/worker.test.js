@@ -54,6 +54,7 @@ describe("invoice worker", () => {
 		jest.clearAllMocks();
 		process.env.NODE_ENV = "test";
 		process.env.DATABASE_URL = "postgres://test";
+		process.env.METRICS_PORT = "0";
 		exitSpy = jest.spyOn(process, "exit").mockImplementation(() => {});
 		mockInitDB.mockResolvedValue();
 		mockCheckQueue.mockResolvedValue("local-queue");
@@ -111,6 +112,14 @@ describe("invoice worker", () => {
 			},
 			"Invoice completed",
 		);
+		const metrics = await worker.metricsRegistry.metrics();
+		expect(metrics).toContain("muyu_invoice_jobs_received_total 1");
+		expect(metrics).toContain(
+			'muyu_invoice_jobs_finished_total{outcome="completed"} 1',
+		);
+		expect(metrics).toContain(
+			'muyu_invoice_stage_duration_seconds_count{stage="pdf",outcome="success"} 1',
+		);
 	});
 
 	test("generates and stores without emailing when requested", async () => {
@@ -161,6 +170,36 @@ describe("invoice worker", () => {
 			}),
 			"Invoice failed",
 		);
+	});
+
+	test("does not mark a completed invoice failed when acknowledgement fails", async () => {
+		const invoice = {
+			id: 7,
+			owner_email: "author@example.com",
+			status: "processing",
+		};
+		mockGetInvoiceById.mockResolvedValue(invoice);
+		mockGeneratePDF.mockResolvedValue(Buffer.from("pdf"));
+		mockStorePDF.mockResolvedValue("invoices/7.pdf");
+		mockSendInvoiceEmail.mockResolvedValue();
+		mockMarkInvoiceComplete.mockResolvedValue({
+			...invoice,
+			status: "complete",
+		});
+		mockDeleteInvoice.mockRejectedValue(new Error("SQS unavailable"));
+
+		await worker.processMessage(message());
+
+		expect(mockMarkInvoiceFailed).not.toHaveBeenCalled();
+		expect(mockLogError).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "invoice_completion_ack_failed",
+				err: expect.objectContaining({ message: "SQS unavailable" }),
+			}),
+			"Invoice completion acknowledgement failed",
+		);
+		const metrics = await worker.metricsRegistry.metrics();
+		expect(metrics).toContain("muyu_invoice_ack_failures_total 1");
 	});
 
 	test("handles an invoice lookup failure as a processing failure", async () => {
@@ -224,6 +263,8 @@ describe("invoice worker", () => {
 		);
 		expect(mockPoolEnd).toHaveBeenCalledTimes(1);
 		expect(exitSpy).toHaveBeenCalledWith(1);
+		const metrics = await worker.metricsRegistry.metrics();
+		expect(metrics).toContain("muyu_worker_poll_failures_total 1");
 	});
 
 	test("exits nonzero when queue subscription fails", async () => {
