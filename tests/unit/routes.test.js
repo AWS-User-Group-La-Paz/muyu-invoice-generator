@@ -76,6 +76,21 @@ describe("web routes", () => {
 		expect(settings.status).toBe(200);
 	});
 
+	test("exposes Prometheus metrics without counting the scrape", async () => {
+		await request(app).get("/health");
+		const response = await request(app).get("/metrics");
+
+		expect(response.status).toBe(200);
+		expect(response.headers["content-type"]).toContain("text/plain");
+		expect(response.text).toContain(
+			'muyu_http_requests_total{method="GET",route="/health",status="200"}',
+		);
+		expect(response.text).not.toContain('route="/metrics"');
+		expect(response.text).toContain("muyu_http_request_duration_seconds");
+		expect(response.text).toContain("muyu_invoice_generation_requests_total");
+		expect(response.text).toContain("muyu_invoice_downloads_total");
+	});
+
 	test("logs completed HTTP requests with structured fields", async () => {
 		await request(app).get("/health");
 
@@ -171,6 +186,10 @@ describe("web routes", () => {
 		expect(mockLogger.child).toHaveBeenCalledWith({
 			requestId: response.headers["x-request-id"],
 		});
+		const metrics = await request(app).get("/metrics");
+		expect(metrics.text).toContain(
+			'muyu_invoice_generation_requests_total{outcome="accepted"}',
+		);
 	});
 
 	test("marks the saved invoice Failed when enqueueing fails", async () => {
@@ -254,6 +273,10 @@ describe("web routes", () => {
 		expect(response.body).toEqual(Buffer.from("stored pdf"));
 		expect(openPDF).toHaveBeenCalledWith("invoices/1.pdf");
 		expect(generatePDF).not.toHaveBeenCalled();
+		const metrics = await request(app).get("/metrics");
+		expect(metrics.text).toContain(
+			'muyu_invoice_downloads_total{outcome="completed"}',
+		);
 	});
 
 	test("keeps profile settings behavior", async () => {

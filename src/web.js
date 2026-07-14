@@ -4,6 +4,7 @@ const path = require("node:path");
 const { pipeline } = require("node:stream/promises");
 const cookieParser = require("cookie-parser");
 const { createLogger } = require("./services/logger");
+const { createWebMetrics } = require("./services/metrics");
 const { calculateInvoice } = require("./services/calculations");
 const {
 	initDB,
@@ -22,6 +23,13 @@ const app = express();
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 const logger = createLogger("web");
+const {
+	registry,
+	httpRequests,
+	httpRequestDuration,
+	invoiceGenerationRequests,
+	invoiceDownloads,
+} = createWebMetrics();
 const logInfo = (event, message, fields = {}, target = logger) =>
 	target.info({ event, ...fields }, message);
 const logError = (event, message, error, fields = {}, target = logger) =>
@@ -53,7 +61,18 @@ app.use((req, res, next) => {
 });
 app.use((req, res, next) => {
 	const startedAt = process.hrtime.bigint();
+	const endMetric =
+		req.path === "/metrics" ? null : httpRequestDuration.startTimer();
 	res.on("finish", () => {
+		if (endMetric) {
+			const labels = {
+				method: req.method,
+				route: req.route?.path || "unmatched",
+				status: String(res.statusCode),
+			};
+			httpRequests.inc(labels);
+			endMetric(labels);
+		}
 		req.log.info(
 			{
 				event: "http_request",
@@ -72,6 +91,11 @@ app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "../views"));
 app.use(express.static(path.join(__dirname, "../public")));
 app.use(express.urlencoded({ extended: true }));
+
+app.get("/metrics", async (_req, res) => {
+	res.setHeader("Content-Type", registry.contentType);
+	res.end(await registry.metrics());
+});
 
 const renderError = (res, status, title, message, email = "") =>
 	res.status(status).render("error", { status, title, message, email });
@@ -227,6 +251,7 @@ app.get("/download/:id", async (req, res) => {
 		const invoice = await getInvoiceById(req.params.id);
 
 		if (!invoice) {
+			invoiceDownloads.inc({ outcome: "not_found" });
 			return renderError(
 				res,
 				404,
@@ -237,6 +262,7 @@ app.get("/download/:id", async (req, res) => {
 		}
 
 		if (invoice.owner_email !== email) {
+			invoiceDownloads.inc({ outcome: "forbidden" });
 			return renderError(
 				res,
 				403,
@@ -247,6 +273,7 @@ app.get("/download/:id", async (req, res) => {
 		}
 
 		if (invoice.status !== "complete" || !invoice.pdf_key) {
+			invoiceDownloads.inc({ outcome: "not_ready" });
 			return renderError(
 				res,
 				409,
@@ -264,7 +291,9 @@ app.get("/download/:id", async (req, res) => {
 			`attachment; filename=invoice-${invoice.id}.pdf`,
 		);
 		await pipeline(pdfStream, res);
+		invoiceDownloads.inc({ outcome: "completed" });
 	} catch (error) {
+		invoiceDownloads.inc({ outcome: "failed" });
 		logError(
 			"invoice_download_failed",
 			"Invoice download failed",
@@ -291,9 +320,11 @@ app.get("/download/:id", async (req, res) => {
 app.post("/generate", async (req, res) => {
 	const userEmail = req.cookies.user_email;
 	if (!userEmail) {
+		invoiceGenerationRequests.inc({ outcome: "unauthenticated" });
 		return res.status(401).json({ error: "Email required" });
 	}
 	if (!validInvoiceRequest(req.body)) {
+		invoiceGenerationRequests.inc({ outcome: "invalid" });
 		return res.status(400).json({ error: "Invalid invoice" });
 	}
 
@@ -317,6 +348,7 @@ app.post("/generate", async (req, res) => {
 			...invoiceData,
 		});
 	} catch (error) {
+		invoiceGenerationRequests.inc({ outcome: "save_failed" });
 		logError("invoice_save_failed", "Invoice save failed", error, {}, req.log);
 		return res.status(500).json({ error: "Invoice not saved" });
 	}
@@ -337,8 +369,10 @@ app.post("/generate", async (req, res) => {
 			},
 			req.log,
 		);
+		invoiceGenerationRequests.inc({ outcome: "accepted" });
 		return res.status(202).json({ id: invoice.id, status: "processing" });
 	} catch (error) {
+		invoiceGenerationRequests.inc({ outcome: "enqueue_failed" });
 		logError(
 			"invoice_enqueue_failed",
 			"Invoice enqueue failed",
