@@ -1,6 +1,15 @@
 const client = require("prom-client");
 const http = require("node:http");
 
+const sendMetrics = async (registry, res) => {
+	try {
+		res.setHeader("Content-Type", registry.contentType);
+		res.end(await registry.metrics());
+	} catch {
+		res.writeHead(500).end();
+	}
+};
+
 const createWebMetrics = () => {
 	const registry = new client.Registry();
 	return {
@@ -74,16 +83,15 @@ const createWorkerMetrics = () => {
 
 const startMetricsServer = (registry, port) =>
 	new Promise((resolve, reject) => {
-		const server = http.createServer(async (req, res) => {
+		const server = http.createServer((req, res) => {
 			if (req.url !== "/metrics") {
 				res.writeHead(404).end();
 				return;
 			}
-			res.setHeader("Content-Type", registry.contentType);
-			res.end(await registry.metrics());
+			sendMetrics(registry, res);
 		});
 		server.once("error", reject);
-		server.listen(port, () => {
+		server.listen(port, "0.0.0.0", () => {
 			server.off("error", reject);
 			resolve(server);
 		});
@@ -98,6 +106,7 @@ const stopMetricsServer = (server) =>
 module.exports = {
 	createWebMetrics,
 	createWorkerMetrics,
+	sendMetrics,
 	startMetricsServer,
 	stopMetricsServer,
 };

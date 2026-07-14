@@ -118,7 +118,7 @@ Worker role:
 
 Both processes write one JSON log object per line. Stable fields include `time`, `level`, `service`, `event`, `requestId`, `invoiceId`, `messageId`, `errorCode`, and `err`; error entries include a stack trace. Request IDs are returned in `X-Request-Id` and carried through invoice jobs. Email addresses, cookies, authorization headers, and invoice contents are not logged.
 
-The web and worker expose Prometheus metrics on their respective `/metrics` endpoints. Metric labels are limited to HTTP method, route template, status, fixed outcome, and the `pdf`, `storage`, or `email` stage. IDs, emails, raw URLs, and error text are never metric labels.
+The web and worker expose unauthenticated Prometheus metrics on their respective `/metrics` endpoints. The worker metrics server binds to `0.0.0.0` for infrastructure scraping; deployment network controls must restrict access to the monitoring infrastructure. Metric labels are limited to HTTP method, route template, status, fixed outcome, and the `pdf`, `storage`, or `email` stage. IDs, emails, raw URLs, and error text are never metric labels.
 
 Web metrics:
 

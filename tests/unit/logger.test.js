@@ -2,7 +2,7 @@ const { PassThrough } = require("node:stream");
 const { once } = require("node:events");
 const { createLogger } = require("../../src/services/logger");
 
-test("writes structured errors with stack traces and redacts email", async () => {
+test("writes structured errors with stack traces and redacts sensitive fields", async () => {
 	const output = new PassThrough();
 	const line = once(output, "data");
 	const logger = createLogger("worker", output);
@@ -16,6 +16,13 @@ test("writes structured errors with stack traces and redacts email", async () =>
 			invoiceId: 7,
 			errorCode: error.code,
 			email: "author@example.com",
+			ownerEmail: "owner@example.com",
+			req: {
+				headers: {
+					authorization: "Bearer secret",
+					cookie: "user_email=owner@example.com",
+				},
+			},
 			err: error,
 		},
 		"Invoice failed",
@@ -36,4 +43,7 @@ test("writes structured errors with stack traces and redacts email", async () =>
 		},
 	});
 	expect(entry.email).toBeUndefined();
+	expect(entry.ownerEmail).toBeUndefined();
+	expect(entry.req.headers.authorization).toBeUndefined();
+	expect(entry.req.headers.cookie).toBeUndefined();
 });

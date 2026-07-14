@@ -1,10 +1,27 @@
-const http = require("node:http");
-const { once } = require("node:events");
+const request = require("supertest");
 const {
 	createWorkerMetrics,
+	sendMetrics,
 	startMetricsServer,
 	stopMetricsServer,
 } = require("../../src/services/metrics");
+
+test("returns 500 when metrics collection fails", async () => {
+	const response = {
+		setHeader: jest.fn(),
+		writeHead: jest.fn().mockReturnThis(),
+		end: jest.fn(),
+	};
+	const registry = {
+		contentType: "text/plain",
+		metrics: jest.fn().mockRejectedValue(new Error("collection failed")),
+	};
+
+	await sendMetrics(registry, response);
+
+	expect(response.writeHead).toHaveBeenCalledWith(500);
+	expect(response.end).toHaveBeenCalled();
+});
 
 test("serves worker metrics in Prometheus format", async () => {
 	const { registry, jobsReceived } = createWorkerMetrics();
@@ -12,18 +29,12 @@ test("serves worker metrics in Prometheus format", async () => {
 	const server = await startMetricsServer(registry, 0);
 
 	try {
-		const response = await new Promise((resolve) => {
-			http.get(`http://127.0.0.1:${server.address().port}/metrics`, resolve);
-		});
-		const chunks = [];
-		response.on("data", (chunk) => chunks.push(chunk));
-		await once(response, "end");
+		expect(server.address().address).toBe("0.0.0.0");
+		const response = await request(server).get("/metrics");
 
-		expect(response.statusCode).toBe(200);
+		expect(response.status).toBe(200);
 		expect(response.headers["content-type"]).toContain("text/plain");
-		expect(Buffer.concat(chunks).toString()).toContain(
-			"muyu_invoice_jobs_received_total 1",
-		);
+		expect(response.text).toContain("muyu_invoice_jobs_received_total 1");
 	} finally {
 		await stopMetricsServer(server);
 	}

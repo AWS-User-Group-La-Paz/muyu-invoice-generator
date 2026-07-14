@@ -92,13 +92,14 @@ describe("web routes", () => {
 	});
 
 	test("logs completed HTTP requests with structured fields", async () => {
-		await request(app).get("/health");
+		await request(app).get("/health").set("X-Forwarded-For", "203.0.113.10");
 
 		expect(mockInfo).toHaveBeenCalledWith(
 			expect.objectContaining({
 				event: "http_request",
 				method: "GET",
 				path: "/health",
+				ip: "203.0.113.10",
 				status: 200,
 				durationMs: expect.any(Number),
 			}),

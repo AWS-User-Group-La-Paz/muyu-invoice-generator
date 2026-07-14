@@ -6,7 +6,7 @@ This is a server-rendered Node.js/Express invoice application. Keep application 
 
 ## Build, Test, and Development Commands
 
-- `npm install` installs locked dependencies.
+- `npm ci` performs clean, locked, reproducible installs. Use `npm install` only when changing dependencies.
 - `mise run local-setup` starts PostgreSQL, LocalStack, and Mailpit, then creates the local queue.
 - `mise run dev` and `mise run dev-worker` run the web process and worker with file watching; use separate terminals.
 - `npm test -- --runInBand` runs Jest with coverage without requiring Docker or cloud services.

@@ -4,7 +4,7 @@ const path = require("node:path");
 const { pipeline } = require("node:stream/promises");
 const cookieParser = require("cookie-parser");
 const { createLogger } = require("./services/logger");
-const { createWebMetrics } = require("./services/metrics");
+const { createWebMetrics, sendMetrics } = require("./services/metrics");
 const { calculateInvoice } = require("./services/calculations");
 const {
 	initDB,
@@ -78,6 +78,7 @@ app.use((req, res, next) => {
 				event: "http_request",
 				method: req.method,
 				path: req.path,
+				ip: req.ip,
 				status: res.statusCode,
 				durationMs: Number(process.hrtime.bigint() - startedAt) / 1e6,
 			},
@@ -92,10 +93,7 @@ app.set("views", path.join(__dirname, "../views"));
 app.use(express.static(path.join(__dirname, "../public")));
 app.use(express.urlencoded({ extended: true }));
 
-app.get("/metrics", async (_req, res) => {
-	res.setHeader("Content-Type", registry.contentType);
-	res.end(await registry.metrics());
-});
+app.get("/metrics", (_req, res) => sendMetrics(registry, res));
 
 const renderError = (res, status, title, message, email = "") =>
 	res.status(status).render("error", { status, title, message, email });
