@@ -83,6 +83,20 @@ async function observeStage(stage, action) {
 	}
 }
 
+async function acknowledgeInvoice(
+	message,
+	fields,
+	event = "invoice_ack_failed",
+	description = "Invoice acknowledgement failed",
+) {
+	try {
+		await deleteInvoice(message.ReceiptHandle);
+	} catch (error) {
+		workerMetrics.ackFailures.inc();
+		logError(event, description, error, fields);
+	}
+}
+
 async function failInvoice(invoiceId, message, error, requestId) {
 	let failed;
 	try {
@@ -111,17 +125,12 @@ async function failInvoice(invoiceId, message, error, requestId) {
 		error,
 		invoiceFields(invoiceId, message, requestId),
 	);
-	try {
-		await deleteInvoice(message.ReceiptHandle);
-	} catch (ackError) {
-		workerMetrics.ackFailures.inc();
-		logError(
-			"invoice_failure_ack_failed",
-			"Invoice failure acknowledgement failed",
-			ackError,
-			invoiceFields(invoiceId, message, requestId),
-		);
-	}
+	await acknowledgeInvoice(
+		message,
+		invoiceFields(invoiceId, message, requestId),
+		"invoice_failure_ack_failed",
+		"Invoice failure acknowledgement failed",
+	);
 }
 
 async function processMessage(message) {
@@ -142,7 +151,7 @@ async function processMessage(message) {
 			messageFields(message),
 		);
 		finish("malformed");
-		await deleteInvoice(message.ReceiptHandle);
+		await acknowledgeInvoice(message, messageFields(message));
 		return;
 	}
 
@@ -167,7 +176,10 @@ async function processMessage(message) {
 			invoiceFields(invoiceId, message, requestId),
 		);
 		finish("stale");
-		await deleteInvoice(message.ReceiptHandle);
+		await acknowledgeInvoice(
+			message,
+			invoiceFields(invoiceId, message, requestId),
+		);
 		return;
 	}
 	if (invoice.status !== "processing") {
@@ -177,7 +189,10 @@ async function processMessage(message) {
 			invoiceFields(invoiceId, message, requestId),
 		);
 		finish("duplicate");
-		await deleteInvoice(message.ReceiptHandle);
+		await acknowledgeInvoice(
+			message,
+			invoiceFields(invoiceId, message, requestId),
+		);
 		return;
 	}
 
@@ -228,17 +243,12 @@ async function processMessage(message) {
 		return;
 	}
 	finish("completed");
-	try {
-		await deleteInvoice(message.ReceiptHandle);
-	} catch (error) {
-		workerMetrics.ackFailures.inc();
-		logError(
-			"invoice_completion_ack_failed",
-			"Invoice completion acknowledgement failed",
-			error,
-			invoiceFields(invoiceId, message, requestId),
-		);
-	}
+	await acknowledgeInvoice(
+		message,
+		invoiceFields(invoiceId, message, requestId),
+		"invoice_completion_ack_failed",
+		"Invoice completion acknowledgement failed",
+	);
 }
 
 async function poll() {

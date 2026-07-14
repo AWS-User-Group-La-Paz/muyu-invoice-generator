@@ -234,6 +234,23 @@ describe("invoice worker", () => {
 		expect(mockDeleteInvoice).toHaveBeenCalledWith("receipt-7");
 	});
 
+	test("records acknowledgement failure for a stale job without rejecting", async () => {
+		mockGetInvoiceById.mockResolvedValue(null);
+		mockDeleteInvoice.mockRejectedValue(new Error("SQS unavailable"));
+
+		await expect(worker.processMessage(message())).resolves.toBeUndefined();
+
+		expect(mockLogError).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "invoice_ack_failed",
+				err: expect.objectContaining({ message: "SQS unavailable" }),
+			}),
+			"Invoice acknowledgement failed",
+		);
+		const metrics = await worker.metricsRegistry.metrics();
+		expect(metrics).toContain("muyu_invoice_ack_failures_total 1");
+	});
+
 	test("deletes a malformed message", async () => {
 		await worker.processMessage(message("not-json"));
 
