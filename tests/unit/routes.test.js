@@ -3,7 +3,12 @@ const request = require("supertest");
 
 const mockInfo = jest.fn();
 const mockError = jest.fn();
-const mockLogger = { info: mockInfo, error: mockError };
+const mockRequestLogger = { info: mockInfo, error: mockError };
+const mockLogger = {
+	info: mockInfo,
+	error: mockError,
+	child: jest.fn(() => mockRequestLogger),
+};
 
 jest.mock("../../src/services/db");
 jest.mock("../../src/services/queue");
@@ -42,9 +47,10 @@ describe("web routes", () => {
 		jest.clearAllMocks();
 		getProfileByEmail.mockResolvedValue(null);
 		getInvoicesByOwner.mockResolvedValue([]);
-		createInvoiceJob.mockImplementation((invoice, skipEmail) => ({
+		createInvoiceJob.mockImplementation((invoice, skipEmail, requestId) => ({
 			invoiceId: invoice.id,
 			skipEmail,
+			requestId,
 		}));
 		enqueueInvoice.mockResolvedValue();
 		markInvoiceFailed.mockResolvedValue({ id: 1, status: "failed" });
@@ -138,20 +144,33 @@ describe("web routes", () => {
 			.send({ ...validInvoice, skipEmail: "true" });
 
 		expect(response.status).toBe(202);
+		expect(response.headers["x-request-id"]).toEqual(expect.any(String));
 		expect(response.body).toEqual({ id: 1, status: "processing" });
 		expect(saveInvoice).toHaveBeenCalledWith(
 			expect.objectContaining({ owner_email: "user@example.com" }),
 		);
-		expect(createInvoiceJob).toHaveBeenCalledWith(invoice, true);
+		expect(createInvoiceJob).toHaveBeenCalledWith(
+			invoice,
+			true,
+			response.headers["x-request-id"],
+		);
 		expect(enqueueInvoice).toHaveBeenCalledWith({
 			invoiceId: 1,
 			skipEmail: true,
+			requestId: response.headers["x-request-id"],
 		});
 		expect(generatePDF).not.toHaveBeenCalled();
 		expect(mockInfo).toHaveBeenCalledWith(
-			{ event: "invoice_queued", invoiceId: 1, messageId: "message-1" },
+			{
+				event: "invoice_queued",
+				invoiceId: 1,
+				messageId: "message-1",
+			},
 			"Invoice queued",
 		);
+		expect(mockLogger.child).toHaveBeenCalledWith({
+			requestId: response.headers["x-request-id"],
+		});
 	});
 
 	test("marks the saved invoice Failed when enqueueing fails", async () => {

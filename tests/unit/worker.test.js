@@ -80,7 +80,9 @@ describe("invoice worker", () => {
 			status: "complete",
 		});
 
-		await worker.processMessage(message());
+		await worker.processMessage(
+			message({ invoiceId: 7, requestId: "request-7" }),
+		);
 
 		expect(mockGeneratePDF).toHaveBeenCalledWith(invoice);
 		expect(mockStorePDF).toHaveBeenCalledWith(7, pdf);
@@ -105,6 +107,7 @@ describe("invoice worker", () => {
 				event: "invoice_completed",
 				invoiceId: 7,
 				messageId: "message-7",
+				requestId: "request-7",
 			},
 			"Invoice completed",
 		);

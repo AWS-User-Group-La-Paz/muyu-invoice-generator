@@ -33,9 +33,10 @@ const logError = (event, message, error, fields = {}) =>
 	);
 const messageFields = (message) =>
 	message?.MessageId ? { messageId: message.MessageId } : {};
-const invoiceFields = (invoiceId, message) => ({
+const invoiceFields = (invoiceId, message, requestId) => ({
 	invoiceId,
 	...messageFields(message),
+	...(requestId ? { requestId } : {}),
 });
 
 function validateEnvironment() {
@@ -57,12 +58,12 @@ async function closePool() {
 	await pool.end();
 }
 
-async function failInvoice(invoiceId, message, error) {
+async function failInvoice(invoiceId, message, error, requestId) {
 	logError(
 		"invoice_failed",
 		"Invoice failed",
 		error,
-		invoiceFields(invoiceId, message),
+		invoiceFields(invoiceId, message, requestId),
 	);
 	try {
 		const failed = await markInvoiceFailed(invoiceId);
@@ -72,7 +73,7 @@ async function failInvoice(invoiceId, message, error) {
 			"invoice_failed_status_save_failed",
 			"Invoice failure status save failed",
 			statusError,
-			invoiceFields(invoiceId, message),
+			invoiceFields(invoiceId, message, requestId),
 		);
 	}
 }
@@ -92,24 +93,24 @@ async function processMessage(message) {
 		return;
 	}
 
-	const { invoiceId, skipEmail } = job;
+	const { invoiceId, skipEmail, requestId } = job;
 	logInfo(
 		"invoice_received",
 		"Invoice received",
-		invoiceFields(invoiceId, message),
+		invoiceFields(invoiceId, message, requestId),
 	);
 	let invoice;
 	try {
 		invoice = await getInvoiceById(invoiceId);
 	} catch (error) {
-		await failInvoice(invoiceId, message, error);
+		await failInvoice(invoiceId, message, error, requestId);
 		return;
 	}
 	if (!invoice) {
 		logInfo(
 			"invoice_stale_skipped",
 			"Stale invoice skipped",
-			invoiceFields(invoiceId, message),
+			invoiceFields(invoiceId, message, requestId),
 		);
 		await deleteInvoice(message.ReceiptHandle);
 		return;
@@ -118,7 +119,7 @@ async function processMessage(message) {
 		logInfo(
 			"invoice_duplicate_skipped",
 			"Duplicate invoice skipped",
-			invoiceFields(invoiceId, message),
+			invoiceFields(invoiceId, message, requestId),
 		);
 		await deleteInvoice(message.ReceiptHandle);
 		return;
@@ -129,13 +130,13 @@ async function processMessage(message) {
 		logInfo(
 			"invoice_pdf_generated",
 			"Invoice PDF generated",
-			invoiceFields(invoiceId, message),
+			invoiceFields(invoiceId, message, requestId),
 		);
 		const pdfKey = await storePDF(invoiceId, pdfBuffer);
 		logInfo(
 			"invoice_pdf_stored",
 			"Invoice PDF stored",
-			invoiceFields(invoiceId, message),
+			invoiceFields(invoiceId, message, requestId),
 		);
 		if (!skipEmail) {
 			await sendInvoiceEmail({
@@ -146,24 +147,24 @@ async function processMessage(message) {
 			logInfo(
 				"invoice_email_sent",
 				"Invoice email sent",
-				invoiceFields(invoiceId, message),
+				invoiceFields(invoiceId, message, requestId),
 			);
 		} else {
 			logInfo(
 				"invoice_email_skipped",
 				"Invoice email skipped",
-				invoiceFields(invoiceId, message),
+				invoiceFields(invoiceId, message, requestId),
 			);
 		}
 		await markInvoiceComplete(invoiceId, pdfKey);
 		logInfo(
 			"invoice_completed",
 			"Invoice completed",
-			invoiceFields(invoiceId, message),
+			invoiceFields(invoiceId, message, requestId),
 		);
 		await deleteInvoice(message.ReceiptHandle);
 	} catch (error) {
-		await failInvoice(invoiceId, message, error);
+		await failInvoice(invoiceId, message, error, requestId);
 	}
 }
 

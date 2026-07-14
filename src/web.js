@@ -1,4 +1,5 @@
 const express = require("express");
+const { randomUUID } = require("node:crypto");
 const path = require("node:path");
 const { pipeline } = require("node:stream/promises");
 const cookieParser = require("cookie-parser");
@@ -21,10 +22,10 @@ const app = express();
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 const logger = createLogger("web");
-const logInfo = (event, message, fields = {}) =>
-	logger.info({ event, ...fields }, message);
-const logError = (event, message, error, fields = {}) =>
-	logger.error(
+const logInfo = (event, message, fields = {}, target = logger) =>
+	target.info({ event, ...fields }, message);
+const logError = (event, message, error, fields = {}, target = logger) =>
+	target.error(
 		{ event, ...fields, errorCode: error?.code, err: error },
 		message,
 	);
@@ -45,9 +46,15 @@ if (process.env.NODE_ENV !== "test") {
 }
 
 app.use((req, res, next) => {
+	req.requestId = randomUUID();
+	req.log = logger.child({ requestId: req.requestId });
+	res.setHeader("X-Request-Id", req.requestId);
+	next();
+});
+app.use((req, res, next) => {
 	const startedAt = process.hrtime.bigint();
 	res.on("finish", () => {
-		logger.info(
+		req.log.info(
 			{
 				event: "http_request",
 				method: req.method,
@@ -114,7 +121,13 @@ app.get("/", async (req, res) => {
 		const profile = email ? await getProfileByEmail(email) : null;
 		res.render("index", { profile });
 	} catch (error) {
-		logError("dashboard_load_failed", "Dashboard load failed", error);
+		logError(
+			"dashboard_load_failed",
+			"Dashboard load failed",
+			error,
+			{},
+			req.log,
+		);
 		res.render("index", { profile: null });
 	}
 });
@@ -128,7 +141,13 @@ app.get("/past-invoices", async (req, res) => {
 		const invoices = await getInvoicesByOwner(email);
 		res.render("past-invoices", { invoices, email });
 	} catch (error) {
-		logError("past_invoices_load_failed", "Invoice history load failed", error);
+		logError(
+			"past_invoices_load_failed",
+			"Invoice history load failed",
+			error,
+			{},
+			req.log,
+		);
 		renderError(
 			res,
 			500,
@@ -148,7 +167,13 @@ app.get("/settings", async (req, res) => {
 		const profile = await getProfileByEmail(email);
 		res.render("settings", { profile, email });
 	} catch (error) {
-		logError("settings_load_failed", "Settings load failed", error);
+		logError(
+			"settings_load_failed",
+			"Settings load failed",
+			error,
+			{},
+			req.log,
+		);
 		renderError(
 			res,
 			500,
@@ -179,7 +204,13 @@ app.post("/settings", async (req, res) => {
 		});
 		res.redirect("/settings?success=1");
 	} catch (error) {
-		logError("settings_save_failed", "Settings save failed", error);
+		logError(
+			"settings_save_failed",
+			"Settings save failed",
+			error,
+			{},
+			req.log,
+		);
 		renderError(
 			res,
 			500,
@@ -234,9 +265,15 @@ app.get("/download/:id", async (req, res) => {
 		);
 		await pipeline(pdfStream, res);
 	} catch (error) {
-		logError("invoice_download_failed", "Invoice download failed", error, {
-			invoiceId: req.params.id,
-		});
+		logError(
+			"invoice_download_failed",
+			"Invoice download failed",
+			error,
+			{
+				invoiceId: req.params.id,
+			},
+			req.log,
+		);
 		if (res.headersSent) {
 			res.destroy(error);
 			return;
@@ -280,22 +317,37 @@ app.post("/generate", async (req, res) => {
 			...invoiceData,
 		});
 	} catch (error) {
-		logError("invoice_save_failed", "Invoice save failed", error);
+		logError("invoice_save_failed", "Invoice save failed", error, {}, req.log);
 		return res.status(500).json({ error: "Invoice not saved" });
 	}
 
 	try {
-		const job = createInvoiceJob(invoice, req.body.skipEmail === "true");
+		const job = createInvoiceJob(
+			invoice,
+			req.body.skipEmail === "true",
+			req.requestId,
+		);
 		const queued = await enqueueInvoice(job);
-		logInfo("invoice_queued", "Invoice queued", {
-			invoiceId: invoice.id,
-			...(queued?.MessageId ? { messageId: queued.MessageId } : {}),
-		});
+		logInfo(
+			"invoice_queued",
+			"Invoice queued",
+			{
+				invoiceId: invoice.id,
+				...(queued?.MessageId ? { messageId: queued.MessageId } : {}),
+			},
+			req.log,
+		);
 		return res.status(202).json({ id: invoice.id, status: "processing" });
 	} catch (error) {
-		logError("invoice_enqueue_failed", "Invoice enqueue failed", error, {
-			invoiceId: invoice.id,
-		});
+		logError(
+			"invoice_enqueue_failed",
+			"Invoice enqueue failed",
+			error,
+			{
+				invoiceId: invoice.id,
+			},
+			req.log,
+		);
 		try {
 			await markInvoiceFailed(invoice.id);
 		} catch (statusError) {
@@ -304,6 +356,7 @@ app.post("/generate", async (req, res) => {
 				"Invoice failure status save failed",
 				statusError,
 				{ invoiceId: invoice.id },
+				req.log,
 			);
 		}
 		return res.status(500).json({ error: "Invoice not queued" });
