@@ -2,7 +2,7 @@ const express = require("express");
 const path = require("node:path");
 const { pipeline } = require("node:stream/promises");
 const cookieParser = require("cookie-parser");
-const { httpLogger, logLine, quoted } = require("./services/logger");
+const { createLogger } = require("./services/logger");
 const { calculateInvoice } = require("./services/calculations");
 const {
 	initDB,
@@ -20,10 +20,14 @@ const { openPDF } = require("./services/storage");
 const app = express();
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
-const logInfo = (event, details) =>
-	console.log(logLine("web", "info", event, details));
-const logError = (event, details) =>
-	console.error(logLine("web", "error", event, details));
+const logger = createLogger("web");
+const logInfo = (event, message, fields = {}) =>
+	logger.info({ event, ...fields }, message);
+const logError = (event, message, error, fields = {}) =>
+	logger.error(
+		{ event, ...fields, errorCode: error?.code, err: error },
+		message,
+	);
 
 if (process.env.NODE_ENV !== "test") {
 	const required = ["DATABASE_URL"];
@@ -32,12 +36,30 @@ if (process.env.NODE_ENV !== "test") {
 	}
 	const missing = required.filter((name) => !process.env[name]);
 	if (missing.length) {
-		logError("missing_environment", `missing=${quoted(missing.join(", "))}`);
+		logger.error(
+			{ event: "missing_environment", missing },
+			"Required environment variables are missing",
+		);
 		process.exit(1);
 	}
 }
 
-app.use(httpLogger);
+app.use((req, res, next) => {
+	const startedAt = process.hrtime.bigint();
+	res.on("finish", () => {
+		logger.info(
+			{
+				event: "http_request",
+				method: req.method,
+				path: req.path,
+				status: res.statusCode,
+				durationMs: Number(process.hrtime.bigint() - startedAt) / 1e6,
+			},
+			"HTTP request completed",
+		);
+	});
+	next();
+});
 app.use(cookieParser());
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "../views"));
@@ -92,7 +114,7 @@ app.get("/", async (req, res) => {
 		const profile = email ? await getProfileByEmail(email) : null;
 		res.render("index", { profile });
 	} catch (error) {
-		logError("dashboard_load_failed", `error=${quoted(error.message)}`);
+		logError("dashboard_load_failed", "Dashboard load failed", error);
 		res.render("index", { profile: null });
 	}
 });
@@ -106,7 +128,7 @@ app.get("/past-invoices", async (req, res) => {
 		const invoices = await getInvoicesByOwner(email);
 		res.render("past-invoices", { invoices, email });
 	} catch (error) {
-		logError("past_invoices_load_failed", `error=${quoted(error.message)}`);
+		logError("past_invoices_load_failed", "Invoice history load failed", error);
 		renderError(
 			res,
 			500,
@@ -126,7 +148,7 @@ app.get("/settings", async (req, res) => {
 		const profile = await getProfileByEmail(email);
 		res.render("settings", { profile, email });
 	} catch (error) {
-		logError("settings_load_failed", `error=${quoted(error.message)}`);
+		logError("settings_load_failed", "Settings load failed", error);
 		renderError(
 			res,
 			500,
@@ -157,7 +179,7 @@ app.post("/settings", async (req, res) => {
 		});
 		res.redirect("/settings?success=1");
 	} catch (error) {
-		logError("settings_save_failed", `error=${quoted(error.message)}`);
+		logError("settings_save_failed", "Settings save failed", error);
 		renderError(
 			res,
 			500,
@@ -212,10 +234,9 @@ app.get("/download/:id", async (req, res) => {
 		);
 		await pipeline(pdfStream, res);
 	} catch (error) {
-		logError(
-			"invoice_download_failed",
-			`invoiceId=${req.params.id} error=${quoted(error.message)}`,
-		);
+		logError("invoice_download_failed", "Invoice download failed", error, {
+			invoiceId: req.params.id,
+		});
 		if (res.headersSent) {
 			res.destroy(error);
 			return;
@@ -259,31 +280,30 @@ app.post("/generate", async (req, res) => {
 			...invoiceData,
 		});
 	} catch (error) {
-		logError("invoice_save_failed", `error=${quoted(error.message)}`);
+		logError("invoice_save_failed", "Invoice save failed", error);
 		return res.status(500).json({ error: "Invoice not saved" });
 	}
 
 	try {
 		const job = createInvoiceJob(invoice, req.body.skipEmail === "true");
 		const queued = await enqueueInvoice(job);
-		logInfo(
-			"invoice_queued",
-			`invoiceId=${invoice.id}${
-				queued?.MessageId ? ` messageId=${queued.MessageId}` : ""
-			}`,
-		);
+		logInfo("invoice_queued", "Invoice queued", {
+			invoiceId: invoice.id,
+			...(queued?.MessageId ? { messageId: queued.MessageId } : {}),
+		});
 		return res.status(202).json({ id: invoice.id, status: "processing" });
 	} catch (error) {
-		logError(
-			"invoice_enqueue_failed",
-			`invoiceId=${invoice.id} error=${quoted(error.message)}`,
-		);
+		logError("invoice_enqueue_failed", "Invoice enqueue failed", error, {
+			invoiceId: invoice.id,
+		});
 		try {
 			await markInvoiceFailed(invoice.id);
 		} catch (statusError) {
 			logError(
 				"invoice_failed_status_save_failed",
-				`invoiceId=${invoice.id} error=${quoted(statusError.message)}`,
+				"Invoice failure status save failed",
+				statusError,
+				{ invoiceId: invoice.id },
 			);
 		}
 		return res.status(500).json({ error: "Invoice not queued" });
@@ -294,7 +314,7 @@ let shutdownPromise;
 const shutdown = (signal = "shutdown") => {
 	if (shutdownPromise) return shutdownPromise;
 	shutdownPromise = (async () => {
-		logInfo("shutdown", `signal=${signal}`);
+		logInfo("shutdown", "Web process shutting down", { signal });
 		await pool.end();
 		process.exit(0);
 	})();
@@ -308,10 +328,10 @@ async function start() {
 	try {
 		await initDB();
 		app.listen(PORT, () => {
-			logInfo("server_started", `port=${PORT}`);
+			logInfo("server_started", "Web server started", { port: PORT });
 		});
 	} catch (error) {
-		logError("server_start_failed", `error=${quoted(error.message)}`);
+		logError("server_start_failed", "Web server start failed", error);
 		process.exit(1);
 	}
 }

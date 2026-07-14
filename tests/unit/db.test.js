@@ -1,8 +1,13 @@
 const mockQuery = jest.fn();
 const mockOn = jest.fn();
+const mockInfo = jest.fn();
+const mockError = jest.fn();
 
 jest.mock("pg", () => ({
 	Pool: jest.fn(() => ({ query: mockQuery, on: mockOn, end: jest.fn() })),
+}));
+jest.mock("../../src/services/logger", () => ({
+	createLogger: jest.fn(() => ({ info: mockInfo, error: mockError })),
 }));
 
 const {
@@ -24,8 +29,6 @@ describe("database service", () => {
 
 	test("creates the final invoice schema without upgrade statements", async () => {
 		mockQuery.mockResolvedValue({ rows: [] });
-		const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
-
 		await initDB();
 
 		const sql = mockQuery.mock.calls.map(([text]) => text).join("\n");
@@ -40,8 +43,9 @@ describe("database service", () => {
 			"CHECK (status IN ('processing', 'complete', 'failed'))",
 		);
 		expect(sql).not.toContain("ALTER TABLE");
-		expect(logSpy).toHaveBeenCalledWith(
-			expect.stringMatching(/service=db event=database_initialized$/),
+		expect(mockInfo).toHaveBeenCalledWith(
+			{ event: "database_initialized" },
+			"Database initialized",
 		);
 	});
 

@@ -9,6 +9,8 @@ const mockDeleteInvoice = jest.fn();
 const mockGeneratePDF = jest.fn();
 const mockStorePDF = jest.fn();
 const mockSendInvoiceEmail = jest.fn();
+const mockLogInfo = jest.fn();
+const mockLogError = jest.fn();
 
 jest.mock("../../src/services/db", () => ({
 	initDB: mockInitDB,
@@ -33,6 +35,9 @@ jest.mock("../../src/services/storage", () => ({ storePDF: mockStorePDF }));
 jest.mock("../../src/services/email", () => ({
 	sendInvoiceEmail: mockSendInvoiceEmail,
 }));
+jest.mock("../../src/services/logger", () => ({
+	createLogger: jest.fn(() => ({ info: mockLogInfo, error: mockLogError })),
+}));
 
 const message = (body = { invoiceId: 7 }) => ({
 	Body: typeof body === "string" ? body : JSON.stringify(body),
@@ -42,8 +47,6 @@ const message = (body = { invoiceId: 7 }) => ({
 
 describe("invoice worker", () => {
 	let worker;
-	let logSpy;
-	let errorSpy;
 	let exitSpy;
 
 	beforeEach(() => {
@@ -51,8 +54,6 @@ describe("invoice worker", () => {
 		jest.clearAllMocks();
 		process.env.NODE_ENV = "test";
 		process.env.DATABASE_URL = "postgres://test";
-		logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
-		errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 		exitSpy = jest.spyOn(process, "exit").mockImplementation(() => {});
 		mockInitDB.mockResolvedValue();
 		mockCheckQueue.mockResolvedValue("local-queue");
@@ -99,10 +100,13 @@ describe("invoice worker", () => {
 		expect(mockSendInvoiceEmail.mock.invocationCallOrder[0]).toBeLessThan(
 			mockMarkInvoiceComplete.mock.invocationCallOrder[0],
 		);
-		expect(logSpy).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/service=worker event=invoice_completed invoiceId=7 messageId=message-7$/,
-			),
+		expect(mockLogInfo).toHaveBeenCalledWith(
+			{
+				event: "invoice_completed",
+				invoiceId: 7,
+				messageId: "message-7",
+			},
+			"Invoice completed",
 		);
 	});
 
@@ -124,10 +128,13 @@ describe("invoice worker", () => {
 		await worker.processMessage(message({ invoiceId: 7, skipEmail: true }));
 
 		expect(mockSendInvoiceEmail).not.toHaveBeenCalled();
-		expect(logSpy).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/service=worker event=invoice_email_skipped invoiceId=7 messageId=message-7$/,
-			),
+		expect(mockLogInfo).toHaveBeenCalledWith(
+			{
+				event: "invoice_email_skipped",
+				invoiceId: 7,
+				messageId: "message-7",
+			},
+			"Invoice email skipped",
 		);
 		expect(mockMarkInvoiceComplete).toHaveBeenCalledWith(7, "invoices/7.pdf");
 		expect(mockDeleteInvoice).toHaveBeenCalledWith("receipt-7");
@@ -142,10 +149,14 @@ describe("invoice worker", () => {
 
 		expect(mockMarkInvoiceFailed).toHaveBeenCalledWith(7);
 		expect(mockDeleteInvoice).toHaveBeenCalledWith("receipt-7");
-		expect(errorSpy).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/service=worker event=invoice_failed invoiceId=7 messageId=message-7 error="render failed"$/,
-			),
+		expect(mockLogError).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "invoice_failed",
+				invoiceId: 7,
+				messageId: "message-7",
+				err: expect.objectContaining({ message: "render failed" }),
+			}),
+			"Invoice failed",
 		);
 	});
 
@@ -193,18 +204,20 @@ describe("invoice worker", () => {
 
 		await worker.start();
 
-		expect(logSpy).toHaveBeenCalledWith(
-			expect.stringMatching(/service=worker event=worker_starting$/),
+		expect(mockLogInfo).toHaveBeenCalledWith(
+			{ event: "worker_starting" },
+			"Worker starting",
 		);
-		expect(logSpy).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/service=worker event=worker_subscribed queue="local-queue"$/,
-			),
+		expect(mockLogInfo).toHaveBeenCalledWith(
+			{ event: "worker_subscribed", queue: "local-queue" },
+			"Worker subscribed",
 		);
-		expect(errorSpy).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/service=worker event=worker_poll_failed error="queue unavailable"$/,
-			),
+		expect(mockLogError).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "worker_poll_failed",
+				err: expect.objectContaining({ message: "queue unavailable" }),
+			}),
+			"Worker poll failed",
 		);
 		expect(mockPoolEnd).toHaveBeenCalledTimes(1);
 		expect(exitSpy).toHaveBeenCalledWith(1);
@@ -215,10 +228,12 @@ describe("invoice worker", () => {
 
 		await worker.start();
 
-		expect(errorSpy).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/service=worker event=worker_startup_failed error="missing queue"$/,
-			),
+		expect(mockLogError).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "worker_startup_failed",
+				err: expect.objectContaining({ message: "missing queue" }),
+			}),
+			"Worker startup failed",
 		);
 		expect(mockPoolEnd).toHaveBeenCalledTimes(1);
 		expect(exitSpy).toHaveBeenCalledWith(1);
@@ -249,13 +264,13 @@ describe("invoice worker", () => {
 		expect(handlers.SIGINT).toEqual(expect.any(Function));
 		expect(mockReceiveInvoice.mock.calls[0][0].abortSignal.aborted).toBe(true);
 		expect(mockPoolEnd).toHaveBeenCalledTimes(1);
-		expect(logSpy).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/service=worker event=worker_signal signal=SIGTERM$/,
-			),
+		expect(mockLogInfo).toHaveBeenCalledWith(
+			{ event: "worker_signal", signal: "SIGTERM" },
+			"Worker signal received",
 		);
-		expect(logSpy).toHaveBeenCalledWith(
-			expect.stringMatching(/service=worker event=worker_stopped$/),
+		expect(mockLogInfo).toHaveBeenCalledWith(
+			{ event: "worker_stopped" },
+			"Worker stopped",
 		);
 		expect(exitSpy).toHaveBeenCalledWith(0);
 	});

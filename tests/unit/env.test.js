@@ -1,4 +1,6 @@
 const mockPoolEnd = jest.fn();
+const mockLogInfo = jest.fn();
+const mockLogError = jest.fn();
 
 jest.mock("../../src/services/db", () => ({
 	initDB: jest.fn(),
@@ -24,6 +26,9 @@ jest.mock("../../src/services/storage", () => ({
 	openPDF: jest.fn(),
 }));
 jest.mock("../../src/services/email", () => ({ sendInvoiceEmail: jest.fn() }));
+jest.mock("../../src/services/logger", () => ({
+	createLogger: jest.fn(() => ({ info: mockLogInfo, error: mockLogError })),
+}));
 
 describe("environment validation", () => {
 	const originalEnv = process.env;
@@ -39,29 +44,36 @@ describe("environment validation", () => {
 	});
 
 	test("web reports every missing production resource", () => {
-		const error = jest.spyOn(console, "error").mockImplementation(() => {});
 		const exit = jest.spyOn(process, "exit").mockImplementation(() => {});
 
 		require("../../src/web");
 
-		expect(error).toHaveBeenCalledWith(
-			expect.stringContaining(
-				"DATABASE_URL, AWS_REGION, SQS_QUEUE_URL, S3_BUCKET",
-			),
+		expect(mockLogError).toHaveBeenCalledWith(
+			{
+				event: "missing_environment",
+				missing: ["DATABASE_URL", "AWS_REGION", "SQS_QUEUE_URL", "S3_BUCKET"],
+			},
+			"Required environment variables are missing",
 		);
 		expect(exit).toHaveBeenCalledWith(1);
 	});
 
 	test("worker also requires the production email sender", async () => {
-		const error = jest.spyOn(console, "error").mockImplementation(() => {});
-		jest.spyOn(console, "log").mockImplementation(() => {});
 		const exit = jest.spyOn(process, "exit").mockImplementation(() => {});
 		mockPoolEnd.mockResolvedValue();
 
 		const { start } = require("../../src/worker");
 		await start();
 
-		expect(error).toHaveBeenCalledWith(expect.stringContaining("EMAIL_FROM"));
+		expect(mockLogError).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "worker_startup_failed",
+				err: expect.objectContaining({
+					message: expect.stringContaining("EMAIL_FROM"),
+				}),
+			}),
+			"Worker startup failed",
+		);
 		expect(exit).toHaveBeenCalledWith(1);
 	});
 

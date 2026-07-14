@@ -14,7 +14,7 @@ const {
 const { generatePDF } = require("./services/pdf");
 const { storePDF } = require("./services/storage");
 const { sendInvoiceEmail } = require("./services/email");
-const { logLine, quoted } = require("./services/logger");
+const { createLogger } = require("./services/logger");
 
 let stopping = false;
 let poolClosed = false;
@@ -23,14 +23,20 @@ let activePollController;
 let processing;
 let stopPromise;
 
-const logInfo = (event, details) =>
-	console.log(logLine("worker", "info", event, details));
-const logError = (event, details) =>
-	console.error(logLine("worker", "error", event, details));
+const logger = createLogger("worker");
+const logInfo = (event, message, fields = {}) =>
+	logger.info({ event, ...fields }, message);
+const logError = (event, message, error, fields = {}) =>
+	logger.error(
+		{ event, ...fields, errorCode: error?.code, err: error },
+		message,
+	);
 const messageFields = (message) =>
-	message?.MessageId ? `messageId=${message.MessageId}` : "";
-const invoiceFields = (invoiceId, message) =>
-	[`invoiceId=${invoiceId}`, messageFields(message)].filter(Boolean).join(" ");
+	message?.MessageId ? { messageId: message.MessageId } : {};
+const invoiceFields = (invoiceId, message) => ({
+	invoiceId,
+	...messageFields(message),
+});
 
 function validateEnvironment() {
 	const required = ["DATABASE_URL"];
@@ -54,7 +60,9 @@ async function closePool() {
 async function failInvoice(invoiceId, message, error) {
 	logError(
 		"invoice_failed",
-		`${invoiceFields(invoiceId, message)} error=${quoted(error.message)}`,
+		"Invoice failed",
+		error,
+		invoiceFields(invoiceId, message),
 	);
 	try {
 		const failed = await markInvoiceFailed(invoiceId);
@@ -62,7 +70,9 @@ async function failInvoice(invoiceId, message, error) {
 	} catch (statusError) {
 		logError(
 			"invoice_failed_status_save_failed",
-			`${invoiceFields(invoiceId, message)} error=${quoted(statusError.message)}`,
+			"Invoice failure status save failed",
+			statusError,
+			invoiceFields(invoiceId, message),
 		);
 	}
 }
@@ -74,16 +84,20 @@ async function processMessage(message) {
 	} catch (error) {
 		logError(
 			"invoice_job_malformed",
-			[messageFields(message), `error=${quoted(error.message)}`]
-				.filter(Boolean)
-				.join(" "),
+			"Invoice job is malformed",
+			error,
+			messageFields(message),
 		);
 		await deleteInvoice(message.ReceiptHandle);
 		return;
 	}
 
 	const { invoiceId, skipEmail } = job;
-	logInfo("invoice_received", invoiceFields(invoiceId, message));
+	logInfo(
+		"invoice_received",
+		"Invoice received",
+		invoiceFields(invoiceId, message),
+	);
 	let invoice;
 	try {
 		invoice = await getInvoiceById(invoiceId);
@@ -92,33 +106,61 @@ async function processMessage(message) {
 		return;
 	}
 	if (!invoice) {
-		logInfo("invoice_stale_skipped", invoiceFields(invoiceId, message));
+		logInfo(
+			"invoice_stale_skipped",
+			"Stale invoice skipped",
+			invoiceFields(invoiceId, message),
+		);
 		await deleteInvoice(message.ReceiptHandle);
 		return;
 	}
 	if (invoice.status !== "processing") {
-		logInfo("invoice_duplicate_skipped", invoiceFields(invoiceId, message));
+		logInfo(
+			"invoice_duplicate_skipped",
+			"Duplicate invoice skipped",
+			invoiceFields(invoiceId, message),
+		);
 		await deleteInvoice(message.ReceiptHandle);
 		return;
 	}
 
 	try {
 		const pdfBuffer = await generatePDF(invoice);
-		logInfo("invoice_pdf_generated", invoiceFields(invoiceId, message));
+		logInfo(
+			"invoice_pdf_generated",
+			"Invoice PDF generated",
+			invoiceFields(invoiceId, message),
+		);
 		const pdfKey = await storePDF(invoiceId, pdfBuffer);
-		logInfo("invoice_pdf_stored", invoiceFields(invoiceId, message));
+		logInfo(
+			"invoice_pdf_stored",
+			"Invoice PDF stored",
+			invoiceFields(invoiceId, message),
+		);
 		if (!skipEmail) {
 			await sendInvoiceEmail({
 				to: invoice.owner_email,
 				invoiceId,
 				pdfBuffer,
 			});
-			logInfo("invoice_email_sent", invoiceFields(invoiceId, message));
+			logInfo(
+				"invoice_email_sent",
+				"Invoice email sent",
+				invoiceFields(invoiceId, message),
+			);
 		} else {
-			logInfo("invoice_email_skipped", invoiceFields(invoiceId, message));
+			logInfo(
+				"invoice_email_skipped",
+				"Invoice email skipped",
+				invoiceFields(invoiceId, message),
+			);
 		}
 		await markInvoiceComplete(invoiceId, pdfKey);
-		logInfo("invoice_completed", invoiceFields(invoiceId, message));
+		logInfo(
+			"invoice_completed",
+			"Invoice completed",
+			invoiceFields(invoiceId, message),
+		);
 		await deleteInvoice(message.ReceiptHandle);
 	} catch (error) {
 		await failInvoice(invoiceId, message, error);
@@ -135,7 +177,7 @@ async function poll() {
 			});
 		} catch (error) {
 			if (stopping && error.name === "AbortError") break;
-			logError("worker_poll_failed", `error=${quoted(error.message)}`);
+			logError("worker_poll_failed", "Worker poll failed", error);
 			await closePool();
 			process.exit(1);
 			return;
@@ -163,14 +205,14 @@ function registerSignals() {
 
 async function start() {
 	registerSignals();
-	logInfo("worker_starting");
+	logInfo("worker_starting", "Worker starting");
 	try {
 		validateEnvironment();
 		await initDB();
 		const queue = await checkQueue();
-		logInfo("worker_subscribed", `queue=${quoted(queue)}`);
+		logInfo("worker_subscribed", "Worker subscribed", { queue });
 	} catch (error) {
-		logError("worker_startup_failed", `error=${quoted(error.message)}`);
+		logError("worker_startup_failed", "Worker startup failed", error);
 		await closePool();
 		process.exit(1);
 		return;
@@ -182,11 +224,11 @@ function shutdown(signal) {
 	if (stopPromise) return stopPromise;
 	stopPromise = (async () => {
 		stopping = true;
-		logInfo("worker_signal", `signal=${signal}`);
+		logInfo("worker_signal", "Worker signal received", { signal });
 		activePollController?.abort();
 		if (processing) await processing;
 		await closePool();
-		logInfo("worker_stopped");
+		logInfo("worker_stopped", "Worker stopped");
 		process.exit(0);
 	})();
 	return stopPromise;

@@ -1,10 +1,17 @@
 const { Readable } = require("node:stream");
 const request = require("supertest");
 
+const mockInfo = jest.fn();
+const mockError = jest.fn();
+const mockLogger = { info: mockInfo, error: mockError };
+
 jest.mock("../../src/services/db");
 jest.mock("../../src/services/queue");
 jest.mock("../../src/services/storage");
 jest.mock("../../src/services/pdf");
+jest.mock("../../src/services/logger", () => ({
+	createLogger: jest.fn(() => mockLogger),
+}));
 
 const {
 	saveInvoice,
@@ -63,18 +70,18 @@ describe("web routes", () => {
 		expect(settings.status).toBe(200);
 	});
 
-	test("logs the client IP forwarded by the load balancer", async () => {
-		const log = jest.spyOn(process.stdout, "write").mockImplementation();
+	test("logs completed HTTP requests with structured fields", async () => {
+		await request(app).get("/health");
 
-		await request(app).get("/health").set("X-Forwarded-For", "203.0.113.10");
-
-		expect(log).toHaveBeenCalledWith(
-			expect.stringContaining(
-				'event=http_request method=GET path="/health" status=200',
-			),
-		);
-		expect(log).toHaveBeenCalledWith(
-			expect.stringContaining('ip="203.0.113.10"'),
+		expect(mockInfo).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "http_request",
+				method: "GET",
+				path: "/health",
+				status: 200,
+				durationMs: expect.any(Number),
+			}),
+			"HTTP request completed",
 		);
 	});
 
@@ -124,8 +131,6 @@ describe("web routes", () => {
 		const invoice = { id: 1, status: "processing" };
 		saveInvoice.mockResolvedValue(invoice);
 		enqueueInvoice.mockResolvedValue({ MessageId: "message-1" });
-		const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
-
 		const response = await request(app)
 			.post("/generate")
 			.set("Cookie", ["user_email=user@example.com"])
@@ -143,18 +148,15 @@ describe("web routes", () => {
 			skipEmail: true,
 		});
 		expect(generatePDF).not.toHaveBeenCalled();
-		expect(logSpy).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/service=web event=invoice_queued invoiceId=1 messageId=message-1$/,
-			),
+		expect(mockInfo).toHaveBeenCalledWith(
+			{ event: "invoice_queued", invoiceId: 1, messageId: "message-1" },
+			"Invoice queued",
 		);
 	});
 
 	test("marks the saved invoice Failed when enqueueing fails", async () => {
 		saveInvoice.mockResolvedValue({ id: 1, status: "processing" });
 		enqueueInvoice.mockRejectedValue(new Error("queue down"));
-		const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-
 		const response = await request(app)
 			.post("/generate")
 			.set("Cookie", ["user_email=user@example.com"])
@@ -163,10 +165,13 @@ describe("web routes", () => {
 
 		expect(response.status).toBe(500);
 		expect(markInvoiceFailed).toHaveBeenCalledWith(1);
-		expect(errorSpy).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/service=web event=invoice_enqueue_failed invoiceId=1 error="queue down"$/,
-			),
+		expect(mockError).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "invoice_enqueue_failed",
+				invoiceId: 1,
+				err: expect.objectContaining({ message: "queue down" }),
+			}),
+			"Invoice enqueue failed",
 		);
 	});
 
