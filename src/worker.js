@@ -299,6 +299,12 @@ async function start() {
 		metricsServer = await startMetricsServer(
 			workerMetrics.registry,
 			Number(process.env.METRICS_PORT || 9464),
+			(error) =>
+				logError(
+					"worker_metrics_server_failed",
+					"Worker metrics server failed",
+					error,
+				),
 		);
 		logInfo("worker_subscribed", "Worker subscribed", { queue });
 	} catch (error) {

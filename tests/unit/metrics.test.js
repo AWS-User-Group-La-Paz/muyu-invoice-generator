@@ -25,11 +25,15 @@ test("returns 500 when metrics collection fails", async () => {
 
 test("serves worker metrics in Prometheus format", async () => {
 	const { registry, jobsReceived } = createWorkerMetrics();
+	const onError = jest.fn();
 	jobsReceived.inc();
-	const server = await startMetricsServer(registry, 0);
+	const server = await startMetricsServer(registry, 0, onError);
 
 	try {
 		expect(server.address().address).toBe("0.0.0.0");
+		const error = new Error("metrics server failed");
+		server.emit("error", error);
+		expect(onError).toHaveBeenCalledWith(error);
 		const response = await request(server).get("/metrics");
 
 		expect(response.status).toBe(200);

@@ -81,7 +81,7 @@ const createWorkerMetrics = () => {
 	};
 };
 
-const startMetricsServer = (registry, port) =>
+const startMetricsServer = (registry, port, onError) =>
 	new Promise((resolve, reject) => {
 		const server = http.createServer((req, res) => {
 			if (req.url !== "/metrics") {
@@ -93,6 +93,7 @@ const startMetricsServer = (registry, port) =>
 		server.once("error", reject);
 		server.listen(port, "0.0.0.0", () => {
 			server.off("error", reject);
+			server.on("error", onError);
 			resolve(server);
 		});
 	});
