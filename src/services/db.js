@@ -1,13 +1,16 @@
 const { Pool } = require("pg");
-const { logLine, quoted } = require("./logger");
+const { createLogger } = require("./logger");
+
+const logger = createLogger("db");
 
 const pool = new Pool({
 	connectionString: process.env.DATABASE_URL,
 });
 
 pool.on("error", (err) => {
-	console.error(
-		logLine("db", "error", "idle_client_error", `error=${quoted(err.message)}`),
+	logger.error(
+		{ event: "idle_client_error", errorCode: err.code, err },
+		"Idle database client failed",
 	);
 });
 
@@ -49,7 +52,7 @@ async function initDB() {
     );
   `);
 
-	console.log(logLine("db", "info", "database_initialized"));
+	logger.info({ event: "database_initialized" }, "Database initialized");
 }
 
 async function saveInvoice(invoiceData) {

@@ -1,10 +1,22 @@
 const { Readable } = require("node:stream");
 const request = require("supertest");
 
+const mockInfo = jest.fn();
+const mockError = jest.fn();
+const mockRequestLogger = { info: mockInfo, error: mockError };
+const mockLogger = {
+	info: mockInfo,
+	error: mockError,
+	child: jest.fn(() => mockRequestLogger),
+};
+
 jest.mock("../../src/services/db");
 jest.mock("../../src/services/queue");
 jest.mock("../../src/services/storage");
 jest.mock("../../src/services/pdf");
+jest.mock("../../src/services/logger", () => ({
+	createLogger: jest.fn(() => mockLogger),
+}));
 
 const {
 	saveInvoice,
@@ -35,9 +47,10 @@ describe("web routes", () => {
 		jest.clearAllMocks();
 		getProfileByEmail.mockResolvedValue(null);
 		getInvoicesByOwner.mockResolvedValue([]);
-		createInvoiceJob.mockImplementation((invoice, skipEmail) => ({
+		createInvoiceJob.mockImplementation((invoice, skipEmail, requestId) => ({
 			invoiceId: invoice.id,
 			skipEmail,
+			requestId,
 		}));
 		enqueueInvoice.mockResolvedValue();
 		markInvoiceFailed.mockResolvedValue({ id: 1, status: "failed" });
@@ -63,18 +76,34 @@ describe("web routes", () => {
 		expect(settings.status).toBe(200);
 	});
 
-	test("logs the client IP forwarded by the load balancer", async () => {
-		const log = jest.spyOn(process.stdout, "write").mockImplementation();
+	test("exposes Prometheus metrics without counting the scrape", async () => {
+		await request(app).get("/health");
+		const response = await request(app).get("/metrics");
 
+		expect(response.status).toBe(200);
+		expect(response.headers["content-type"]).toContain("text/plain");
+		expect(response.text).toContain(
+			'muyu_http_requests_total{method="GET",route="/health",status="200"}',
+		);
+		expect(response.text).not.toContain('route="/metrics"');
+		expect(response.text).toContain("muyu_http_request_duration_seconds");
+		expect(response.text).toContain("muyu_invoice_generation_requests_total");
+		expect(response.text).toContain("muyu_invoice_downloads_total");
+	});
+
+	test("logs completed HTTP requests with structured fields", async () => {
 		await request(app).get("/health").set("X-Forwarded-For", "203.0.113.10");
 
-		expect(log).toHaveBeenCalledWith(
-			expect.stringContaining(
-				'event=http_request method=GET path="/health" status=200',
-			),
-		);
-		expect(log).toHaveBeenCalledWith(
-			expect.stringContaining('ip="203.0.113.10"'),
+		expect(mockInfo).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "http_request",
+				method: "GET",
+				path: "/health",
+				ip: "203.0.113.10",
+				status: 200,
+				durationMs: expect.any(Number),
+			}),
+			"HTTP request completed",
 		);
 	});
 
@@ -124,8 +153,6 @@ describe("web routes", () => {
 		const invoice = { id: 1, status: "processing" };
 		saveInvoice.mockResolvedValue(invoice);
 		enqueueInvoice.mockResolvedValue({ MessageId: "message-1" });
-		const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
-
 		const response = await request(app)
 			.post("/generate")
 			.set("Cookie", ["user_email=user@example.com"])
@@ -133,28 +160,42 @@ describe("web routes", () => {
 			.send({ ...validInvoice, skipEmail: "true" });
 
 		expect(response.status).toBe(202);
+		expect(response.headers["x-request-id"]).toEqual(expect.any(String));
 		expect(response.body).toEqual({ id: 1, status: "processing" });
 		expect(saveInvoice).toHaveBeenCalledWith(
 			expect.objectContaining({ owner_email: "user@example.com" }),
 		);
-		expect(createInvoiceJob).toHaveBeenCalledWith(invoice, true);
+		expect(createInvoiceJob).toHaveBeenCalledWith(
+			invoice,
+			true,
+			response.headers["x-request-id"],
+		);
 		expect(enqueueInvoice).toHaveBeenCalledWith({
 			invoiceId: 1,
 			skipEmail: true,
+			requestId: response.headers["x-request-id"],
 		});
 		expect(generatePDF).not.toHaveBeenCalled();
-		expect(logSpy).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/service=web event=invoice_queued invoiceId=1 messageId=message-1$/,
-			),
+		expect(mockInfo).toHaveBeenCalledWith(
+			{
+				event: "invoice_queued",
+				invoiceId: 1,
+				messageId: "message-1",
+			},
+			"Invoice queued",
+		);
+		expect(mockLogger.child).toHaveBeenCalledWith({
+			requestId: response.headers["x-request-id"],
+		});
+		const metrics = await request(app).get("/metrics");
+		expect(metrics.text).toContain(
+			'muyu_invoice_generation_requests_total{outcome="accepted"}',
 		);
 	});
 
 	test("marks the saved invoice Failed when enqueueing fails", async () => {
 		saveInvoice.mockResolvedValue({ id: 1, status: "processing" });
 		enqueueInvoice.mockRejectedValue(new Error("queue down"));
-		const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-
 		const response = await request(app)
 			.post("/generate")
 			.set("Cookie", ["user_email=user@example.com"])
@@ -163,10 +204,13 @@ describe("web routes", () => {
 
 		expect(response.status).toBe(500);
 		expect(markInvoiceFailed).toHaveBeenCalledWith(1);
-		expect(errorSpy).toHaveBeenCalledWith(
-			expect.stringMatching(
-				/service=web event=invoice_enqueue_failed invoiceId=1 error="queue down"$/,
-			),
+		expect(mockError).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "invoice_enqueue_failed",
+				invoiceId: 1,
+				err: expect.objectContaining({ message: "queue down" }),
+			}),
+			"Invoice enqueue failed",
 		);
 	});
 
@@ -230,6 +274,10 @@ describe("web routes", () => {
 		expect(response.body).toEqual(Buffer.from("stored pdf"));
 		expect(openPDF).toHaveBeenCalledWith("invoices/1.pdf");
 		expect(generatePDF).not.toHaveBeenCalled();
+		const metrics = await request(app).get("/metrics");
+		expect(metrics.text).toContain(
+			'muyu_invoice_downloads_total{outcome="completed"}',
+		);
 	});
 
 	test("keeps profile settings behavior", async () => {

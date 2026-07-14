@@ -14,7 +14,12 @@ const {
 const { generatePDF } = require("./services/pdf");
 const { storePDF } = require("./services/storage");
 const { sendInvoiceEmail } = require("./services/email");
-const { logLine, quoted } = require("./services/logger");
+const { createLogger } = require("./services/logger");
+const {
+	createWorkerMetrics,
+	startMetricsServer,
+	stopMetricsServer,
+} = require("./services/metrics");
 
 let stopping = false;
 let poolClosed = false;
@@ -22,15 +27,24 @@ let signalsRegistered = false;
 let activePollController;
 let processing;
 let stopPromise;
+let metricsServer;
 
-const logInfo = (event, details) =>
-	console.log(logLine("worker", "info", event, details));
-const logError = (event, details) =>
-	console.error(logLine("worker", "error", event, details));
+const logger = createLogger("worker");
+const workerMetrics = createWorkerMetrics();
+const logInfo = (event, message, fields = {}) =>
+	logger.info({ event, ...fields }, message);
+const logError = (event, message, error, fields = {}) =>
+	logger.error(
+		{ event, ...fields, errorCode: error?.code, err: error },
+		message,
+	);
 const messageFields = (message) =>
-	message?.MessageId ? `messageId=${message.MessageId}` : "";
-const invoiceFields = (invoiceId, message) =>
-	[`invoiceId=${invoiceId}`, messageFields(message)].filter(Boolean).join(" ");
+	message?.MessageId ? { messageId: message.MessageId } : {};
+const invoiceFields = (invoiceId, message, requestId) => ({
+	invoiceId,
+	...messageFields(message),
+	...(requestId ? { requestId } : {}),
+});
 
 function validateEnvironment() {
 	const required = ["DATABASE_URL"];
@@ -51,78 +65,190 @@ async function closePool() {
 	await pool.end();
 }
 
-async function failInvoice(invoiceId, message, error) {
-	logError(
-		"invoice_failed",
-		`${invoiceFields(invoiceId, message)} error=${quoted(error.message)}`,
-	);
+async function closeMetrics() {
+	const server = metricsServer;
+	metricsServer = undefined;
+	await stopMetricsServer(server);
+}
+
+async function observeStage(stage, action) {
+	const end = workerMetrics.stageDuration.startTimer({ stage });
 	try {
-		const failed = await markInvoiceFailed(invoiceId);
-		if (failed) await deleteInvoice(message.ReceiptHandle);
-	} catch (statusError) {
-		logError(
-			"invoice_failed_status_save_failed",
-			`${invoiceFields(invoiceId, message)} error=${quoted(statusError.message)}`,
-		);
+		const result = await action();
+		end({ outcome: "success" });
+		return result;
+	} catch (error) {
+		end({ outcome: "error" });
+		throw error;
 	}
 }
 
+async function acknowledgeInvoice(
+	message,
+	fields,
+	event = "invoice_ack_failed",
+	description = "Invoice acknowledgement failed",
+) {
+	try {
+		await deleteInvoice(message.ReceiptHandle);
+	} catch (error) {
+		workerMetrics.ackFailures.inc();
+		logError(event, description, error, fields);
+	}
+}
+
+async function failInvoice(invoiceId, message, error, requestId) {
+	let failed;
+	try {
+		failed = await markInvoiceFailed(invoiceId);
+	} catch (statusError) {
+		logError(
+			"invoice_failed_status_save_failed",
+			"Invoice failure status save failed",
+			statusError,
+			invoiceFields(invoiceId, message, requestId),
+		);
+		return;
+	}
+	if (!failed) {
+		logError(
+			"invoice_failure_not_applied",
+			"Invoice failure status was not applied",
+			error,
+			invoiceFields(invoiceId, message, requestId),
+		);
+		return;
+	}
+	logError(
+		"invoice_failed",
+		"Invoice failed",
+		error,
+		invoiceFields(invoiceId, message, requestId),
+	);
+	await acknowledgeInvoice(
+		message,
+		invoiceFields(invoiceId, message, requestId),
+		"invoice_failure_ack_failed",
+		"Invoice failure acknowledgement failed",
+	);
+}
+
 async function processMessage(message) {
+	workerMetrics.jobsReceived.inc();
+	const endJob = workerMetrics.jobDuration.startTimer();
+	const finish = (outcome) => {
+		workerMetrics.jobsFinished.inc({ outcome });
+		endJob({ outcome });
+	};
 	let job;
 	try {
 		job = validateInvoiceJob(JSON.parse(message.Body));
 	} catch (error) {
 		logError(
 			"invoice_job_malformed",
-			[messageFields(message), `error=${quoted(error.message)}`]
-				.filter(Boolean)
-				.join(" "),
+			"Invoice job is malformed",
+			error,
+			messageFields(message),
 		);
-		await deleteInvoice(message.ReceiptHandle);
+		finish("malformed");
+		await acknowledgeInvoice(message, messageFields(message));
 		return;
 	}
 
-	const { invoiceId, skipEmail } = job;
-	logInfo("invoice_received", invoiceFields(invoiceId, message));
+	const { invoiceId, skipEmail, requestId } = job;
+	logInfo(
+		"invoice_received",
+		"Invoice received",
+		invoiceFields(invoiceId, message, requestId),
+	);
 	let invoice;
 	try {
 		invoice = await getInvoiceById(invoiceId);
 	} catch (error) {
-		await failInvoice(invoiceId, message, error);
+		await failInvoice(invoiceId, message, error, requestId);
+		finish("failed");
 		return;
 	}
 	if (!invoice) {
-		logInfo("invoice_stale_skipped", invoiceFields(invoiceId, message));
-		await deleteInvoice(message.ReceiptHandle);
+		logInfo(
+			"invoice_stale_skipped",
+			"Stale invoice skipped",
+			invoiceFields(invoiceId, message, requestId),
+		);
+		finish("stale");
+		await acknowledgeInvoice(
+			message,
+			invoiceFields(invoiceId, message, requestId),
+		);
 		return;
 	}
 	if (invoice.status !== "processing") {
-		logInfo("invoice_duplicate_skipped", invoiceFields(invoiceId, message));
-		await deleteInvoice(message.ReceiptHandle);
+		logInfo(
+			"invoice_duplicate_skipped",
+			"Duplicate invoice skipped",
+			invoiceFields(invoiceId, message, requestId),
+		);
+		finish("duplicate");
+		await acknowledgeInvoice(
+			message,
+			invoiceFields(invoiceId, message, requestId),
+		);
 		return;
 	}
 
 	try {
-		const pdfBuffer = await generatePDF(invoice);
-		logInfo("invoice_pdf_generated", invoiceFields(invoiceId, message));
-		const pdfKey = await storePDF(invoiceId, pdfBuffer);
-		logInfo("invoice_pdf_stored", invoiceFields(invoiceId, message));
+		const pdfBuffer = await observeStage("pdf", () => generatePDF(invoice));
+		logInfo(
+			"invoice_pdf_generated",
+			"Invoice PDF generated",
+			invoiceFields(invoiceId, message, requestId),
+		);
+		const pdfKey = await observeStage("storage", () =>
+			storePDF(invoiceId, pdfBuffer),
+		);
+		logInfo(
+			"invoice_pdf_stored",
+			"Invoice PDF stored",
+			invoiceFields(invoiceId, message, requestId),
+		);
 		if (!skipEmail) {
-			await sendInvoiceEmail({
-				to: invoice.owner_email,
-				invoiceId,
-				pdfBuffer,
-			});
-			logInfo("invoice_email_sent", invoiceFields(invoiceId, message));
+			await observeStage("email", () =>
+				sendInvoiceEmail({
+					to: invoice.owner_email,
+					invoiceId,
+					pdfBuffer,
+				}),
+			);
+			logInfo(
+				"invoice_email_sent",
+				"Invoice email sent",
+				invoiceFields(invoiceId, message, requestId),
+			);
 		} else {
-			logInfo("invoice_email_skipped", invoiceFields(invoiceId, message));
+			logInfo(
+				"invoice_email_skipped",
+				"Invoice email skipped",
+				invoiceFields(invoiceId, message, requestId),
+			);
 		}
 		await markInvoiceComplete(invoiceId, pdfKey);
-		logInfo("invoice_completed", invoiceFields(invoiceId, message));
-		await deleteInvoice(message.ReceiptHandle);
+		logInfo(
+			"invoice_completed",
+			"Invoice completed",
+			invoiceFields(invoiceId, message, requestId),
+		);
 	} catch (error) {
-		await failInvoice(invoiceId, message, error);
+		await failInvoice(invoiceId, message, error, requestId);
+		finish("failed");
+		return;
 	}
+	finish("completed");
+	await acknowledgeInvoice(
+		message,
+		invoiceFields(invoiceId, message, requestId),
+		"invoice_completion_ack_failed",
+		"Invoice completion acknowledgement failed",
+	);
 }
 
 async function poll() {
@@ -135,7 +261,9 @@ async function poll() {
 			});
 		} catch (error) {
 			if (stopping && error.name === "AbortError") break;
-			logError("worker_poll_failed", `error=${quoted(error.message)}`);
+			workerMetrics.pollFailures.inc();
+			logError("worker_poll_failed", "Worker poll failed", error);
+			await closeMetrics();
 			await closePool();
 			process.exit(1);
 			return;
@@ -163,14 +291,25 @@ function registerSignals() {
 
 async function start() {
 	registerSignals();
-	logInfo("worker_starting");
+	logInfo("worker_starting", "Worker starting");
 	try {
 		validateEnvironment();
 		await initDB();
 		const queue = await checkQueue();
-		logInfo("worker_subscribed", `queue=${quoted(queue)}`);
+		metricsServer = await startMetricsServer(
+			workerMetrics.registry,
+			Number(process.env.METRICS_PORT || 9464),
+			(error) =>
+				logError(
+					"worker_metrics_server_failed",
+					"Worker metrics server failed",
+					error,
+				),
+		);
+		logInfo("worker_subscribed", "Worker subscribed", { queue });
 	} catch (error) {
-		logError("worker_startup_failed", `error=${quoted(error.message)}`);
+		logError("worker_startup_failed", "Worker startup failed", error);
+		await closeMetrics();
 		await closePool();
 		process.exit(1);
 		return;
@@ -182,11 +321,12 @@ function shutdown(signal) {
 	if (stopPromise) return stopPromise;
 	stopPromise = (async () => {
 		stopping = true;
-		logInfo("worker_signal", `signal=${signal}`);
+		logInfo("worker_signal", "Worker signal received", { signal });
 		activePollController?.abort();
 		if (processing) await processing;
+		await closeMetrics();
 		await closePool();
-		logInfo("worker_stopped");
+		logInfo("worker_stopped", "Worker stopped");
 		process.exit(0);
 	})();
 	return stopPromise;
@@ -195,4 +335,9 @@ function shutdown(signal) {
 /* istanbul ignore next */
 if (require.main === module) start();
 
-module.exports = { start, processMessage, shutdown };
+module.exports = {
+	start,
+	processMessage,
+	shutdown,
+	metricsRegistry: workerMetrics.registry,
+};

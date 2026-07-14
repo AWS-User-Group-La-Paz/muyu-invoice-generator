@@ -1,5 +1,7 @@
 const mockInitDB = jest.fn();
 const mockPoolEnd = jest.fn();
+const mockLogInfo = jest.fn();
+const mockLogError = jest.fn();
 
 jest.mock("../../src/services/db", () => ({
 	initDB: mockInitDB,
@@ -13,6 +15,9 @@ jest.mock("../../src/services/db", () => ({
 }));
 jest.mock("../../src/services/queue");
 jest.mock("../../src/services/storage");
+jest.mock("../../src/services/logger", () => ({
+	createLogger: jest.fn(() => ({ info: mockLogInfo, error: mockLogError })),
+}));
 
 const { app, start, shutdown } = require("../../src/web");
 
@@ -32,8 +37,6 @@ describe("web lifecycle", () => {
 				ready();
 				return { close: jest.fn() };
 			});
-		jest.spyOn(console, "log").mockImplementation(() => {});
-
 		await start();
 
 		expect(mockInitDB).toHaveBeenCalledTimes(1);
@@ -42,7 +45,6 @@ describe("web lifecycle", () => {
 
 	test("exits nonzero on startup failure", async () => {
 		mockInitDB.mockRejectedValue(new Error("database unavailable"));
-		jest.spyOn(console, "error").mockImplementation(() => {});
 		const exit = jest.spyOn(process, "exit").mockImplementation(() => {});
 
 		await start();
@@ -51,7 +53,6 @@ describe("web lifecycle", () => {
 	});
 
 	test("closes the pool only once during repeated shutdown", async () => {
-		jest.spyOn(console, "log").mockImplementation(() => {});
 		const exit = jest.spyOn(process, "exit").mockImplementation(() => {});
 
 		await Promise.all([shutdown("SIGTERM"), shutdown("SIGTERM")]);
