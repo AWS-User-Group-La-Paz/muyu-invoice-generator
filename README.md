@@ -46,6 +46,8 @@ mise run dev-worker
 Without mise, use `docker compose up -d --wait db localstack mailpit`, create the `invoice-pdf-jobs` queue with `awslocal`, then run `npm run dev` and `npm run dev:worker`.
 
 - App: `http://localhost:3000`
+- Web metrics: `http://localhost:3000/metrics`
+- Worker metrics: `http://localhost:9464/metrics`
 - Mailpit: `http://localhost:8025`
 
 The database schema is final-state startup DDL, not a migration chain. Recreate local resources after schema changes:
@@ -82,6 +84,7 @@ Local development defaults live in `mise.toml` and the service modules.
 | `S3_BUCKET` | Both | Yes | Private PDF bucket |
 | `EMAIL_FROM` | Worker | Yes | Verified SES sender |
 | `PORT` | Web | No | HTTP port, default `3000` |
+| `METRICS_PORT` | Worker | No | Prometheus metrics port, default `9464` |
 
 AWS credentials come from the normal SDK credential provider chain and assigned IAM roles. The application contains no access keys.
 
@@ -109,6 +112,29 @@ Worker role:
 - `GET /settings` — company defaults.
 - `POST /settings` — save company defaults.
 - `GET /health` — web-process liveness.
+- `GET /metrics` — Prometheus metrics for the web process.
+
+## Telemetry
+
+Both processes write one JSON log object per line. Stable fields include `time`, `level`, `service`, `event`, `requestId`, `invoiceId`, `messageId`, `errorCode`, and `err`; error entries include a stack trace. Request IDs are returned in `X-Request-Id` and carried through invoice jobs. Email addresses, cookies, authorization headers, and invoice contents are not logged.
+
+The web and worker expose Prometheus metrics on their respective `/metrics` endpoints. Metric labels are limited to HTTP method, route template, status, fixed outcome, and the `pdf`, `storage`, or `email` stage. IDs, emails, raw URLs, and error text are never metric labels.
+
+Web metrics:
+
+- `muyu_http_requests_total`
+- `muyu_http_request_duration_seconds`
+- `muyu_invoice_generation_requests_total`
+- `muyu_invoice_downloads_total`
+
+Worker metrics:
+
+- `muyu_invoice_jobs_received_total`
+- `muyu_invoice_jobs_finished_total`
+- `muyu_invoice_job_duration_seconds`
+- `muyu_invoice_stage_duration_seconds`
+- `muyu_invoice_ack_failures_total`
+- `muyu_worker_poll_failures_total`
 
 ## Manual smoke run
 
