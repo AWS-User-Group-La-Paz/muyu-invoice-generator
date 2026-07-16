@@ -7,12 +7,10 @@ function calculateInvoice(expenses, taxRate) {
 	}, 0);
 
 	const rate = parseFloat(taxRate) || 0;
-	const taxAmount = (subtotal * rate) / 100;
-	const total = subtotal + taxAmount;
+	const total = subtotal + (subtotal * rate) / 100;
 
 	return {
 		subtotal: parseFloat(subtotal.toFixed(2)),
-		taxAmount: parseFloat(taxAmount.toFixed(2)),
 		total: parseFloat(total.toFixed(2)),
 		taxRate: rate,
 		items: items.map((i) => ({

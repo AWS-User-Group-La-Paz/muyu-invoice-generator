@@ -19,6 +19,12 @@ FROM dhi.io/node:24-debian13
 # Enables production behavior in Node dependencies.
 ENV NODE_ENV=production
 
+# Enables vendor-neutral tracing in deployed containers.
+ENV NODE_OPTIONS="--require=@opentelemetry/auto-instrumentations-node/register"
+ENV OTEL_TRACES_EXPORTER=otlp
+ENV OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+ENV OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces
+
 # All following commands run from /app.
 WORKDIR /app
 

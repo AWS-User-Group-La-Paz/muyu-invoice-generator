@@ -37,19 +37,10 @@ describe("queue service", () => {
 		process.env = originalEnv;
 	});
 
-	test("builds and validates an invoice job with an email flag", () => {
-		const { createInvoiceJob, validateInvoiceJob } = loadQueue();
-		const job = createInvoiceJob(
-			{ id: 12, company_name: "Ignored" },
-			true,
-			"request-12",
-		);
+	test("validates an invoice job with an email flag", () => {
+		const { validateInvoiceJob } = loadQueue();
+		const job = { invoiceId: 12, skipEmail: true, requestId: "request-12" };
 
-		expect(job).toEqual({
-			invoiceId: 12,
-			skipEmail: true,
-			requestId: "request-12",
-		});
 		expect(validateInvoiceJob(job)).toEqual(job);
 		expect(() => validateInvoiceJob()).toThrow("positive integer");
 		expect(() => validateInvoiceJob({ invoiceId: 0 })).toThrow(

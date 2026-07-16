@@ -71,7 +71,9 @@ jobs:
 
       - name: Generate image reference
         id: image
-        run: echo "ref=ghcr.io/${GITHUB_REPOSITORY,,}:v$(date -u +%Y.%m.%d)-r${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+        run: |
+          tag="v$(date -u +%Y.%m.%d)-r${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          echo "ref=ghcr.io/${GITHUB_REPOSITORY,,}:$tag" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.1.0
@@ -82,6 +84,9 @@ jobs:
         with:
           context: .
           tags: ${{ steps.image.outputs.ref }}
+          labels: |
+            org.opencontainers.image.description=Muyu invoice generator
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           load: true
 
       - name: Run Trivy image scan

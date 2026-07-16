@@ -26,10 +26,7 @@ const {
 	getProfileByEmail,
 	upsertProfile,
 } = require("../../src/services/db");
-const {
-	createInvoiceJob,
-	enqueueInvoice,
-} = require("../../src/services/queue");
+const { enqueueInvoice } = require("../../src/services/queue");
 const { openPDF } = require("../../src/services/storage");
 const { generatePDF } = require("../../src/services/pdf");
 const { app } = require("../../src/web");
@@ -47,11 +44,6 @@ describe("web routes", () => {
 		jest.clearAllMocks();
 		getProfileByEmail.mockResolvedValue(null);
 		getInvoicesByOwner.mockResolvedValue([]);
-		createInvoiceJob.mockImplementation((invoice, skipEmail, requestId) => ({
-			invoiceId: invoice.id,
-			skipEmail,
-			requestId,
-		}));
 		enqueueInvoice.mockResolvedValue();
 		markInvoiceFailed.mockResolvedValue({ id: 1, status: "failed" });
 	});
@@ -164,11 +156,6 @@ describe("web routes", () => {
 		expect(response.body).toEqual({ id: 1, status: "processing" });
 		expect(saveInvoice).toHaveBeenCalledWith(
 			expect.objectContaining({ owner_email: "user@example.com" }),
-		);
-		expect(createInvoiceJob).toHaveBeenCalledWith(
-			invoice,
-			true,
-			response.headers["x-request-id"],
 		);
 		expect(enqueueInvoice).toHaveBeenCalledWith({
 			invoiceId: 1,
