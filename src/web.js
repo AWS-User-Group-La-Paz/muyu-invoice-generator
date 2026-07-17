@@ -16,7 +16,7 @@ const {
 	getProfileByEmail,
 	pool,
 } = require("./services/db");
-const { createInvoiceJob, enqueueInvoice } = require("./services/queue");
+const { enqueueInvoice } = require("./services/queue");
 const { openPDF } = require("./services/storage");
 
 const app = express();
@@ -352,11 +352,11 @@ app.post("/generate", async (req, res) => {
 	}
 
 	try {
-		const job = createInvoiceJob(
-			invoice,
-			req.body.skipEmail === "true",
-			req.requestId,
-		);
+		const job = {
+			invoiceId: invoice.id,
+			skipEmail: req.body.skipEmail === "true",
+			requestId: req.requestId,
+		};
 		const queued = await enqueueInvoice(job);
 		logInfo(
 			"invoice_queued",
@@ -395,11 +395,19 @@ app.post("/generate", async (req, res) => {
 	}
 });
 
+let server;
 let shutdownPromise;
+const closeServer = () =>
+	new Promise((resolve, reject) => {
+		if (!server) return resolve();
+		server.close((error) => (error ? reject(error) : resolve()));
+	});
+
 const shutdown = (signal = "shutdown") => {
 	if (shutdownPromise) return shutdownPromise;
 	shutdownPromise = (async () => {
 		logInfo("shutdown", "Web process shutting down", { signal });
+		await closeServer();
 		await pool.end();
 		process.exit(0);
 	})();
@@ -412,9 +420,10 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 async function start() {
 	try {
 		await initDB();
-		app.listen(PORT, () => {
+		server = app.listen(PORT, () => {
 			logInfo("server_started", "Web server started", { port: PORT });
 		});
+		return server;
 	} catch (error) {
 		logError("server_start_failed", "Web server start failed", error);
 		process.exit(1);

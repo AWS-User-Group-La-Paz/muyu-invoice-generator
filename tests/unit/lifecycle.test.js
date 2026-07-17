@@ -52,12 +52,22 @@ describe("web lifecycle", () => {
 		expect(exit).toHaveBeenCalledWith(1);
 	});
 
-	test("closes the pool only once during repeated shutdown", async () => {
+	test("stops accepting requests before closing the pool", async () => {
+		const close = jest.fn((done) => done());
+		jest.spyOn(app, "listen").mockImplementation((_port, ready) => {
+			ready();
+			return { close };
+		});
 		const exit = jest.spyOn(process, "exit").mockImplementation(() => {});
 
+		await start();
 		await Promise.all([shutdown("SIGTERM"), shutdown("SIGTERM")]);
 
+		expect(close).toHaveBeenCalledTimes(1);
 		expect(mockPoolEnd).toHaveBeenCalledTimes(1);
+		expect(close.mock.invocationCallOrder[0]).toBeLessThan(
+			mockPoolEnd.mock.invocationCallOrder[0],
+		);
 		expect(exit).toHaveBeenCalledTimes(1);
 		expect(exit).toHaveBeenCalledWith(0);
 	});

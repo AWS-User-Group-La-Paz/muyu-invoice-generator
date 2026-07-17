@@ -14,7 +14,6 @@ jest.mock("../../src/services/db", () => ({
 	getProfileByEmail: jest.fn(),
 }));
 jest.mock("../../src/services/queue", () => ({
-	createInvoiceJob: jest.fn(),
 	validateInvoiceJob: jest.fn(),
 	enqueueInvoice: jest.fn(),
 	checkQueue: jest.fn(),

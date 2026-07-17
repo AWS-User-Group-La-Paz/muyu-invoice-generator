@@ -11,13 +11,12 @@ describe("calculateInvoice", () => {
 			"10",
 			{
 				subtotal: 150,
-				taxAmount: 15,
 				total: 165,
 				taxRate: 10,
 				items: [{ cost: 100 }, { cost: 50 }],
 			},
 		],
-		["empty expenses", [], 10, { subtotal: 0, taxAmount: 0, total: 0 }],
+		["empty expenses", [], 10, { subtotal: 0, total: 0 }],
 		[
 			"invalid cost",
 			[{ description: "Invalid", cost: "invalid" }],
@@ -34,7 +33,7 @@ describe("calculateInvoice", () => {
 			"numeric tax rate",
 			[{ description: "Item", cost: 100 }],
 			5,
-			{ taxAmount: 5 },
+			{ total: 105 },
 		],
 		["non-array expenses", null, 10, { subtotal: 0, items: [] }],
 		[

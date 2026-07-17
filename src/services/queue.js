@@ -42,12 +42,6 @@ function validateInvoiceJob(job) {
 	return job;
 }
 
-const createInvoiceJob = (invoice, skipEmail = false, requestId) => ({
-	invoiceId: invoice.id,
-	skipEmail,
-	...(requestId === undefined ? {} : { requestId }),
-});
-
 async function enqueueInvoice(job) {
 	validateInvoiceJob(job);
 	return client.send(
@@ -91,7 +85,6 @@ async function deleteInvoice(receiptHandle) {
 }
 
 module.exports = {
-	createInvoiceJob,
 	validateInvoiceJob,
 	enqueueInvoice,
 	checkQueue,

@@ -83,6 +83,8 @@ Local development defaults live in `mise.toml` and the service modules.
 | `SQS_QUEUE_URL` | Both | Yes | Invoice job queue |
 | `S3_BUCKET` | Both | Yes | Private PDF bucket |
 | `EMAIL_FROM` | Worker | Yes | Verified SES sender |
+| `OTEL_SERVICE_NAME` | Both | No | Telemetry service name; use `muyu-web` or `muyu-worker` in production |
+| `OTEL_RESOURCE_ATTRIBUTES` | Both | No | Optional comma-separated telemetry attributes, such as deployment environment and service version |
 | `PORT` | Web | No | HTTP port, default `3000` |
 | `METRICS_PORT` | Worker | No | Prometheus metrics port, default `9464` |
 
@@ -116,7 +118,9 @@ Worker role:
 
 ## Telemetry
 
-Both processes write one JSON log object per line. Stable fields include `time`, `level`, `service`, `event`, `requestId`, `invoiceId`, `messageId`, `errorCode`, and `err`; error entries include a stack trace. Request IDs are returned in `X-Request-Id` and carried through invoice jobs. Email addresses, cookies, authorization headers, and invoice contents are not logged.
+Both processes write one JSON log object per line. Stable fields include `time`, `level`, `service`, `event`, `requestId`, `invoiceId`, `messageId`, `errorCode`, and `err`; error entries include a stack trace. OpenTelemetry auto-instrumentation adds `trace_id`, `span_id`, and `trace_flags` when a log is written inside an active span, and forwards the redacted Pino records over OTLP/HTTP. Request IDs are returned in `X-Request-Id` and carried through invoice jobs. Email addresses, cookies, authorization headers, and invoice contents are not logged.
+
+The production image sends traces and logs to an OTLP/HTTP collector at `127.0.0.1:4318` (`/v1/traces` and `/v1/logs`). Deploy a collector sidecar, such as Grafana Alloy, to receive, batch, retry, and export both signals. Keep backend credentials and exporter configuration in that sidecar. Set `OTEL_SERVICE_NAME` for each process and use `OTEL_RESOURCE_ATTRIBUTES` for deployment metadata.
 
 The web and worker expose unauthenticated Prometheus metrics on their respective `/metrics` endpoints. The worker metrics server binds to `0.0.0.0` for infrastructure scraping; deployment network controls must restrict access to the monitoring infrastructure. Metric labels are limited to HTTP method, route template, status, fixed outcome, and the `pdf`, `storage`, or `email` stage. IDs, emails, raw URLs, and error text are never metric labels.
 
