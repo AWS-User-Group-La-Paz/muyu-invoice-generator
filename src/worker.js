@@ -1,4 +1,12 @@
 const {
+	ROOT_CONTEXT,
+	SpanKind,
+	SpanStatusCode,
+	context,
+	propagation,
+	trace,
+} = require("@opentelemetry/api");
+const {
 	initDB,
 	getInvoiceById,
 	markInvoiceComplete,
@@ -31,6 +39,23 @@ let metricsServer;
 
 const logger = createLogger("worker");
 const workerMetrics = createWorkerMetrics();
+const tracer = trace.getTracer("muyu-worker");
+const messageAttributeGetter = {
+	keys: Object.keys,
+	get: (attributes, key) => attributes?.[key]?.StringValue,
+};
+const withSpan = (name, options, action, parentContext = context.active()) =>
+	tracer.startActiveSpan(name, options, parentContext, async (span) => {
+		try {
+			return await action();
+		} catch (error) {
+			span.recordException(error);
+			span.setStatus({ code: SpanStatusCode.ERROR });
+			throw error;
+		} finally {
+			span.end();
+		}
+	});
 const logInfo = (event, message, fields = {}) =>
 	logger.info({ event, ...fields }, message);
 const logError = (event, message, error, fields = {}) =>
@@ -197,7 +222,9 @@ async function processMessage(message) {
 	}
 
 	try {
-		const pdfBuffer = await observeStage("pdf", () => generatePDF(invoice));
+		const pdfBuffer = await observeStage("pdf", () =>
+			withSpan("invoice.pdf.generate", {}, () => generatePDF(invoice)),
+		);
 		logInfo(
 			"invoice_pdf_generated",
 			"Invoice PDF generated",
@@ -272,7 +299,17 @@ async function poll() {
 		}
 
 		if (message) {
-			processing = processMessage(message);
+			const parentContext = propagation.extract(
+				ROOT_CONTEXT,
+				message.MessageAttributes || {},
+				messageAttributeGetter,
+			);
+			processing = withSpan(
+				"invoice.process",
+				{ kind: SpanKind.CONSUMER },
+				() => processMessage(message),
+				parentContext,
+			);
 			try {
 				await processing;
 			} finally {

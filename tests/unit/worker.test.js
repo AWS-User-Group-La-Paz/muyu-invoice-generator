@@ -11,6 +11,35 @@ const mockStorePDF = jest.fn();
 const mockSendInvoiceEmail = jest.fn();
 const mockLogInfo = jest.fn();
 const mockLogError = jest.fn();
+const mockActiveContext = {};
+const mockParentContext = {};
+const mockRootContext = {};
+const mockProcessSpan = {
+	end: jest.fn(),
+	recordException: jest.fn(),
+	setStatus: jest.fn(),
+};
+const mockPdfSpan = {
+	end: jest.fn(),
+	recordException: jest.fn(),
+	setStatus: jest.fn(),
+};
+const mockExtract = jest.fn(() => mockParentContext);
+const mockStartActiveSpan = jest.fn(
+	(name, _options, _parentContext, callback) =>
+		callback(name === "invoice.process" ? mockProcessSpan : mockPdfSpan),
+);
+
+jest.mock("@opentelemetry/api", () => ({
+	ROOT_CONTEXT: mockRootContext,
+	SpanKind: { CONSUMER: "consumer" },
+	SpanStatusCode: { ERROR: "error" },
+	context: { active: jest.fn(() => mockActiveContext) },
+	propagation: { extract: mockExtract },
+	trace: {
+		getTracer: jest.fn(() => ({ startActiveSpan: mockStartActiveSpan })),
+	},
+}));
 
 jest.mock("../../src/services/db", () => ({
 	initDB: mockInitDB,
@@ -120,6 +149,45 @@ describe("invoice worker", () => {
 		expect(metrics).toContain(
 			'muyu_invoice_stage_duration_seconds_count{stage="pdf",outcome="success"} 1',
 		);
+		expect(mockStartActiveSpan).toHaveBeenCalledWith(
+			"invoice.pdf.generate",
+			{},
+			mockActiveContext,
+			expect.any(Function),
+		);
+		expect(mockPdfSpan.end).toHaveBeenCalledTimes(1);
+	});
+
+	test("continues the request trace through worker processing", async () => {
+		const traceparent =
+			"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+		const attributes = {
+			traceparent: { DataType: "String", StringValue: traceparent },
+		};
+		mockReceiveInvoice
+			.mockResolvedValueOnce({
+				...message("not-json"),
+				MessageAttributes: attributes,
+			})
+			.mockRejectedValueOnce(new Error("stop polling"));
+
+		await worker.start();
+
+		expect(mockExtract).toHaveBeenCalledWith(
+			mockRootContext,
+			attributes,
+			expect.any(Object),
+		);
+		const getter = mockExtract.mock.calls[0][2];
+		expect(getter.keys(attributes)).toEqual(["traceparent"]);
+		expect(getter.get(attributes, "traceparent")).toBe(traceparent);
+		expect(mockStartActiveSpan).toHaveBeenCalledWith(
+			"invoice.process",
+			{ kind: "consumer" },
+			mockParentContext,
+			expect.any(Function),
+		);
+		expect(mockProcessSpan.end).toHaveBeenCalledTimes(1);
 	});
 
 	test("generates and stores without emailing when requested", async () => {
